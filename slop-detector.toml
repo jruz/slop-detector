@@ -1,0 +1,6 @@
+[ignore]
+rules = []
+files = []
+
+[ignore.by-rule]
+no-trait-impl = ["src/langs/js.rs"]
