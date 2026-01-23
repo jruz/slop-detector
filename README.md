@@ -1,6 +1,6 @@
 # Slop Detector
 
-Linter for detecting anti-patterns in JS/TS, Rust, and OpenTofu code.
+Linter for detecting anti-patterns in Gleam, JS/TS, Rust, and OpenTofu code.
 
 ## Installation
 
@@ -12,6 +12,7 @@ cargo install --git https://codeberg.org/jruz/slop-detector
 
 ```bash
 slop-detector          # Check all languages
+slop-detector gleam    # Check Gleam only
 slop-detector js       # Check JS/TS only
 slop-detector rust     # Check Rust only
 slop-detector tofu     # Check OpenTofu only
@@ -37,6 +38,9 @@ slop-detector --create-config-for-violations
 ```
 
 ## Rules
+
+### Gleam
+- `exact-versions` - Pin dependency versions in gleam.toml
 
 ### JS/TS
 - `no-interface` - Use type instead of interface

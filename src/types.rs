@@ -19,7 +19,7 @@ pub struct CheckResult {
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
-    #[error("Failed to parse {file}")]
+    #[error("Failed to parse {file}: {message}")]
     ParseFailed { file: String, message: String },
 
     #[error("Failed to read {file}")]

@@ -1,6 +1,6 @@
 # Slop Detector
 
-Linter for detecting anti-patterns in JS/TS, Rust, and OpenTofu code.
+Linter for detecting anti-patterns in Gleam, JS/TS, Rust, and OpenTofu code.
 
 ## Environment
 
@@ -16,6 +16,7 @@ src/
 ├── files.rs         # Glob-based file discovery
 ├── output.rs        # Format violations, generate config
 └── langs/
+    ├── gleam.rs     # Gleam rules (toml parser)
     ├── js.rs        # JS/TS rules (oxc parser)
     ├── rust.rs      # Rust rules (ra_ap_syntax parser)
     └── tofu.rs      # OpenTofu rules (hcl-rs parser)

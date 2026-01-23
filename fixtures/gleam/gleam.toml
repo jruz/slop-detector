@@ -1,0 +1,10 @@
+name = "test_project"
+version = "1.0.0"
+
+[dependencies]
+gleam_stdlib = "~> 0.34"
+gleam_json = ">= 1.0.0 and < 2.0.0"
+gleam_http = "1.0.0"
+
+[dev-dependencies]
+gleeunit = "~> 1.0"
