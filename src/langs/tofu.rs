@@ -224,3 +224,63 @@ pub fn check() -> CheckResult {
         violations,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_fixture(name: &str) -> Body {
+        let path = format!("fixtures/tofu/{name}.tf");
+        let content = fs::read_to_string(&path).expect("fixture should exist");
+        hcl::from_str(&content).expect("valid hcl")
+    }
+
+    #[test]
+    fn banned_resource_detects_violation() {
+        let body = parse_fixture("banned-resource");
+        let violations = check_banned_resources(&body, "test");
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn banned_resource_allows_valid() {
+        let body = parse_fixture("valid-resource");
+        let violations = check_banned_resources(&body, "test");
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn banned_data_source_detects_violation() {
+        let body = parse_fixture("banned-data-source");
+        let violations = check_banned_data_sources(&body, "test");
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn banned_data_source_allows_valid() {
+        let body = parse_fixture("valid-data");
+        let violations = check_banned_data_sources(&body, "test");
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn banned_provisioner_detects_violation() {
+        let body = parse_fixture("banned-provisioner");
+        let violations = check_banned_provisioners(&body, "test");
+        assert_eq!(violations.len(), 2);
+    }
+
+    #[test]
+    fn banned_provider_detects_violation() {
+        let body = parse_fixture("banned-provider");
+        let violations = check_banned_providers(&body, "test");
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn banned_provider_allows_valid() {
+        let body = parse_fixture("valid-provider");
+        let violations = check_banned_providers(&body, "test");
+        assert!(violations.is_empty());
+    }
+}
