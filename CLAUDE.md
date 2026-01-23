@@ -33,7 +33,23 @@ Each lang module follows: `find() -> parse() -> run_rules() -> CheckResult`
 
 ## Adding Rules
 
-Rules are data. Add to RULES array with a check function:
+### 1. Create Fixtures
+
+Create two fixture files in `fixtures/<lang>/`:
+
+**Violation fixture** - code that should trigger the rule:
+```
+fixtures/<lang>/rule-name.<ext>
+```
+
+**Valid fixture** - code that should NOT trigger the rule:
+```
+fixtures/<lang>/valid-rule-name.<ext>
+```
+
+### 2. Add Rule to RULES Array
+
+Rules are data. Add to the RULES array with a check function:
 
 ```rust
 Rule {
@@ -41,8 +57,36 @@ Rule {
     hint: Some("how to fix"),
     check: check_rule_name,
 }
+```
 
+### 3. Implement Check Function
+
+```rust
 fn check_rule_name(source: &str, ast: &Ast) -> Vec<String> {
     // return vec![] for pass, vec!["line N: issue"] for fail
 }
 ```
+
+### 4. Add Tests
+
+Add two tests following the naming convention:
+
+```rust
+#[test]
+fn rule_name_detects_violation() {
+    let (source, ast) = parse_fixture("rule-name");
+    let errors = check_rule_name(&source, &ast);
+    assert_eq!(errors.len(), 1);  // exact count
+}
+
+#[test]
+fn rule_name_allows_valid() {
+    let (source, ast) = parse_fixture("valid-rule-name");
+    let errors = check_rule_name(&source, &ast);
+    assert!(errors.is_empty());
+}
+```
+
+### 5. Verify
+
+Run `just check` to ensure all tests pass.

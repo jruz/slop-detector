@@ -41,6 +41,7 @@ slop-detector --create-config-for-violations
 
 ### Gleam
 - `exact-versions` - Pin dependency versions in gleam.toml
+- `no-unwrap` - Use pattern matching or let assert instead
 
 ### JS/TS
 - `no-interface` - Use type instead of interface
@@ -49,9 +50,14 @@ slop-detector --create-config-for-violations
 - `no-throw` - Return Result.err() instead
 - `no-early-return` - Return Result/Option instead
 - `no-scripts-section` - No scripts in package.json
+- `no-stderr-write` - Avoid writing to stderr
 - `exact-versions` - Pin dependency versions
 
 ### Rust
+- `no-allow-attr` - Refactor instead of suppressing lints
+- `no-cfg-attr-suppress` - No cfg_attr with allow/expect
+- `no-expect-attr` - Refactor instead of suppressing lints
+- `no-expect-outside-tests` - Use ? or match, expect only in tests
 - `no-impl` - Use free functions
 - `no-trait-impl` - Avoid trait implementations
 - `no-print-outside-main` - Keep print statements in main()
