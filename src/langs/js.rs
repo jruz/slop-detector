@@ -391,3 +391,132 @@ pub fn check() -> CheckResult {
         violations: [pkg_violations, ts_violations].concat(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn read_fixture(name: &str) -> String {
+        let path = format!("fixtures/js/{name}");
+        fs::read_to_string(&path).expect("fixture should exist")
+    }
+
+    fn parse_ts_fixture(name: &str) -> Vec<Violation> {
+        let path = format!("fixtures/js/{name}.ts");
+        let source = read_fixture(&format!("{name}.ts"));
+        let allocator = Allocator::default();
+        let parser = Parser::new(&allocator, &source, SourceType::ts());
+        let result = parser.parse();
+        let mut visitor = create_visitor(&source, &path);
+        visitor.visit_program(&result.program);
+        collect_violations(visitor)
+    }
+
+    fn has_violation(violations: &[Violation], rule: &str) -> bool {
+        violations.iter().any(|violation| violation.rule == rule)
+    }
+
+    #[test]
+    fn exact_versions_detects_violation() {
+        let content = read_fixture("exact-versions.json");
+        let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
+        let errors = check_exact_versions(&pkg);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn exact_versions_allows_valid() {
+        let content = read_fixture("valid-exact-versions.json");
+        let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
+        let errors = check_exact_versions(&pkg);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_scripts_section_detects_violation() {
+        let content = read_fixture("no-scripts-section.json");
+        let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
+        let errors = check_no_scripts_section(&pkg);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_scripts_section_allows_valid() {
+        let content = read_fixture("valid-no-scripts.json");
+        let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
+        let errors = check_no_scripts_section(&pkg);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_console_detects_violation() {
+        let violations = parse_ts_fixture("no-console");
+        assert!(has_violation(&violations, "no-console"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_console_allows_valid() {
+        let violations = parse_ts_fixture("valid-console");
+        assert!(!has_violation(&violations, "no-console"));
+    }
+
+    #[test]
+    fn no_early_return_detects_violation() {
+        let violations = parse_ts_fixture("no-early-return");
+        assert!(has_violation(&violations, "no-early-return"));
+        assert_eq!(violations.len(), 2);
+    }
+
+    #[test]
+    fn no_early_return_allows_valid() {
+        let violations = parse_ts_fixture("valid-return");
+        assert!(!has_violation(&violations, "no-early-return"));
+    }
+
+    #[test]
+    fn no_interface_detects_violation() {
+        let violations = parse_ts_fixture("no-interface");
+        assert!(has_violation(&violations, "no-interface"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_interface_allows_valid() {
+        let violations = parse_ts_fixture("valid-type");
+        assert!(!has_violation(&violations, "no-interface"));
+    }
+
+    #[test]
+    fn no_silent_defaults_detects_violation() {
+        let violations = parse_ts_fixture("no-silent-defaults");
+        assert!(has_violation(&violations, "no-silent-defaults"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_silent_defaults_allows_valid() {
+        let violations = parse_ts_fixture("valid-result");
+        assert!(!has_violation(&violations, "no-silent-defaults"));
+    }
+
+    #[test]
+    fn no_stderr_write_detects_violation() {
+        let violations = parse_ts_fixture("no-stderr-write");
+        assert!(has_violation(&violations, "no-stderr-write"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_throw_detects_violation() {
+        let violations = parse_ts_fixture("no-throw");
+        assert!(has_violation(&violations, "no-throw"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_throw_allows_valid() {
+        let violations = parse_ts_fixture("valid-result");
+        assert!(!has_violation(&violations, "no-throw"));
+    }
+}
