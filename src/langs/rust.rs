@@ -17,6 +17,26 @@ struct Rule {
 
 const RULES: &[Rule] = &[
     Rule {
+        check: check_no_allow_attr,
+        hint: Some("refactor code to satisfy the linter instead of suppressing"),
+        name: "no-allow-attr",
+    },
+    Rule {
+        check: check_no_cfg_attr_suppress,
+        hint: Some("refactor code to satisfy the linter instead of suppressing"),
+        name: "no-cfg-attr-suppress",
+    },
+    Rule {
+        check: check_no_expect_attr,
+        hint: Some("refactor code to satisfy the linter instead of suppressing"),
+        name: "no-expect-attr",
+    },
+    Rule {
+        check: check_no_expect_outside_tests,
+        hint: Some("use ? or match for error handling, expect is only allowed in tests"),
+        name: "no-expect-outside-tests",
+    },
+    Rule {
         check: check_no_impl,
         hint: Some("use free functions, impl is banned"),
         name: "no-impl",
@@ -37,6 +57,110 @@ struct ParsedFile {
     ast: SourceFile,
     path: String,
     source: String,
+}
+
+const ALLOW_ATTR: &str = "allow";
+
+fn check_no_allow_attr(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::ATTR {
+                return None;
+            }
+            let attr = ast::Attr::cast(node)?;
+            let path = attr.path()?;
+            if path.to_string() != ALLOW_ATTR {
+                return None;
+            }
+            let line = line_number(source, attr.syntax().text_range().start().into());
+            Some(format!("line {line}: #[{ALLOW_ATTR}(...)]"))
+        })
+        .collect()
+}
+
+fn check_no_cfg_attr_suppress(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::ATTR {
+                return None;
+            }
+            let attr = ast::Attr::cast(node)?;
+            let path = attr.path()?;
+            if path.to_string() != "cfg_attr" {
+                return None;
+            }
+            let token_tree = attr.token_tree()?;
+            let text = token_tree.to_string();
+            let has_allow = text.contains(ALLOW_ATTR);
+            let has_expect = text.contains("expect");
+            if !has_allow && !has_expect {
+                return None;
+            }
+            let line = line_number(source, attr.syntax().text_range().start().into());
+            let suppressed = if has_allow { ALLOW_ATTR } else { "expect" };
+            Some(format!("line {line}: #[cfg_attr(..., {suppressed}(...))]"))
+        })
+        .collect()
+}
+
+fn check_no_expect_attr(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::ATTR {
+                return None;
+            }
+            let attr = ast::Attr::cast(node)?;
+            let path = attr.path()?;
+            if path.to_string() != "expect" {
+                return None;
+            }
+            let line = line_number(source, attr.syntax().text_range().start().into());
+            Some(format!("line {line}: #[expect(...)]"))
+        })
+        .collect()
+}
+
+fn is_inside_test_module(node: &ra_ap_syntax::SyntaxNode) -> bool {
+    node.ancestors().any(|ancestor| {
+        if ancestor.kind() != SyntaxKind::MODULE {
+            return false;
+        }
+        let Some(module) = ast::Module::cast(ancestor.clone()) else {
+            return false;
+        };
+        let is_test_module = module.name().is_some_and(|name| name.text() == "tests");
+        let has_cfg_test = ancestor.children().any(|child| {
+            if child.kind() != SyntaxKind::ATTR {
+                return false;
+            }
+            child.to_string().contains("cfg(test)")
+        });
+        is_test_module && has_cfg_test
+    })
+}
+
+fn check_no_expect_outside_tests(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
+                return None;
+            }
+            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let method_name = method_call.name_ref()?.text().to_string();
+            if method_name != "expect" {
+                return None;
+            }
+            if is_inside_test_module(&node) {
+                return None;
+            }
+            let line = line_number(source, node.text_range().start().into());
+            Some(format!("line {line}: .expect()"))
+        })
+        .collect()
 }
 
 fn check_no_impl(source: &str, ast: &SourceFile) -> Vec<String> {
@@ -180,5 +304,101 @@ pub fn check() -> CheckResult {
         errors,
         file_count: parsed.len(),
         violations,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_fixture(name: &str) -> (String, SourceFile) {
+        let path = format!("fixtures/rust/{name}.rs");
+        let source = fs::read_to_string(&path).expect("fixture should exist");
+        let parse_result = SourceFile::parse(&source, ra_ap_syntax::Edition::Edition2024);
+        (source, parse_result.tree())
+    }
+
+    #[test]
+    fn no_allow_attr_detects_violation() {
+        let (source, ast) = parse_fixture("no-allow-attr");
+        let errors = check_no_allow_attr(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_allow_attr_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-attrs");
+        let errors = check_no_allow_attr(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_cfg_attr_suppress_detects_violation() {
+        let (source, ast) = parse_fixture("no-cfg-attr-suppress");
+        let errors = check_no_cfg_attr_suppress(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_cfg_attr_suppress_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-attrs");
+        let errors = check_no_cfg_attr_suppress(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_expect_attr_detects_violation() {
+        let (source, ast) = parse_fixture("no-expect-attr");
+        let errors = check_no_expect_attr(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_expect_attr_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-attrs");
+        let errors = check_no_expect_attr(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_expect_outside_tests_detects_violation() {
+        let (source, ast) = parse_fixture("no-expect-outside-tests");
+        let errors = check_no_expect_outside_tests(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_expect_outside_tests_allows_valid() {
+        let (source, ast) = parse_fixture("valid-expect-in-tests");
+        let errors = check_no_expect_outside_tests(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_impl_detects_violation() {
+        let (source, ast) = parse_fixture("no-impl");
+        let errors = check_no_impl(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_trait_impl_detects_violation() {
+        let (source, ast) = parse_fixture("no-trait-impl");
+        let errors = check_no_trait_impl(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_print_outside_main_detects_violation() {
+        let (source, ast) = parse_fixture("no-print-outside-main");
+        let errors = check_no_print_outside_main(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_print_outside_main_allows_valid() {
+        let (source, ast) = parse_fixture("valid-print-in-main");
+        let errors = check_no_print_outside_main(&source, &ast);
+        assert!(errors.is_empty());
     }
 }
