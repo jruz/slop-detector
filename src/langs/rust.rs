@@ -42,14 +42,19 @@ const RULES: &[Rule] = &[
         name: "no-impl",
     },
     Rule {
+        check: check_no_print_outside_main,
+        hint: Some("print statements should only be in main()"),
+        name: "no-print-outside-main",
+    },
+    Rule {
         check: check_no_trait_impl,
         hint: Some("trait impls are banned unless required by external crates"),
         name: "no-trait-impl",
     },
     Rule {
-        check: check_no_print_outside_main,
-        hint: Some("print statements should only be in main()"),
-        name: "no-print-outside-main",
+        check: check_no_wildcard_err,
+        hint: Some("capture the error value instead of discarding it with Err(_)"),
+        name: "no-wildcard-err",
     },
 ];
 
@@ -197,6 +202,30 @@ fn check_no_trait_impl(source: &str, ast: &SourceFile) -> Vec<String> {
                 .self_ty()
                 .map_or_else(|| "block".to_string(), |ty| ty.to_string());
             Some(format!("line {line}: impl {trait_ref} for {self_ty}"))
+        })
+        .collect()
+}
+
+fn check_no_wildcard_err(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::TUPLE_STRUCT_PAT {
+                return None;
+            }
+            let pat = ast::TupleStructPat::cast(node)?;
+            let path = pat.path()?;
+            if path.to_string() != "Err" {
+                return None;
+            }
+            let has_wildcard = pat
+                .fields()
+                .any(|field| matches!(field, ast::Pat::WildcardPat(_)));
+            if !has_wildcard {
+                return None;
+            }
+            let line = line_number(source, pat.syntax().text_range().start().into());
+            Some(format!("line {line}: Err(_)"))
         })
         .collect()
 }
@@ -399,6 +428,20 @@ mod tests {
     fn no_print_outside_main_allows_valid() {
         let (source, ast) = parse_fixture("valid-print-in-main");
         let errors = check_no_print_outside_main(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_wildcard_err_detects_violation() {
+        let (source, ast) = parse_fixture("no-wildcard-err");
+        let errors = check_no_wildcard_err(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_wildcard_err_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-wildcard-err");
+        let errors = check_no_wildcard_err(&source, &ast);
         assert!(errors.is_empty());
     }
 }
