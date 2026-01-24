@@ -135,7 +135,9 @@ fn run_package_json_rules(
 }
 
 fn line_number(source: &str, offset: u32) -> usize {
-    let offset_usize = usize::try_from(offset).expect("u32 fits in usize on 32+ bit systems");
+    let Ok(offset_usize) = usize::try_from(offset) else {
+        return 1;
+    };
     source.get(..offset_usize).map_or(1, |slice| {
         slice.chars().filter(|ch| *ch == '\n').count() + 1
     })
@@ -243,14 +245,11 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
             expr.operator,
             LogicalOperator::Or | LogicalOperator::Coalesce
         ) && is_silent_default(&expr.right)
+            && let Ok(start) = usize::try_from(expr.span.start)
+            && let Ok(end) = usize::try_from(expr.span.end)
+            && let Some(text) = self.source.get(start..end)
         {
             let line = line_number(self.source, expr.span.start);
-            let start = usize::try_from(expr.span.start).expect("u32 fits in usize");
-            let end = usize::try_from(expr.span.end).expect("u32 fits in usize");
-            let text = self
-                .source
-                .get(start..end)
-                .expect("parser offsets are valid");
             self.silent_default_errors
                 .push(format!("line {line}: {text}"));
         }
