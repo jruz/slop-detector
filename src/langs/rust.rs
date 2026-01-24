@@ -52,6 +52,11 @@ const RULES: &[Rule] = &[
         name: "no-trait-impl",
     },
     Rule {
+        check: check_no_unwrap_variant,
+        hint: Some("ask the user for approval if a default is necessary"),
+        name: "no-unwrap-variant",
+    },
+    Rule {
         check: check_no_wildcard_err,
         hint: Some("capture the error value instead of discarding it with Err(_)"),
         name: "no-wildcard-err",
@@ -202,6 +207,24 @@ fn check_no_trait_impl(source: &str, ast: &SourceFile) -> Vec<String> {
                 .self_ty()
                 .map_or_else(|| "block".to_string(), |ty| ty.to_string());
             Some(format!("line {line}: impl {trait_ref} for {self_ty}"))
+        })
+        .collect()
+}
+
+fn check_no_unwrap_variant(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
+                return None;
+            }
+            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let method_name = method_call.name_ref()?.text().to_string();
+            if !method_name.starts_with("unwrap_") {
+                return None;
+            }
+            let line = line_number(source, node.text_range().start().into());
+            Some(format!("line {line}: .{method_name}()"))
         })
         .collect()
 }
@@ -428,6 +451,20 @@ mod tests {
     fn no_print_outside_main_allows_valid() {
         let (source, ast) = parse_fixture("valid-print-in-main");
         let errors = check_no_print_outside_main(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_unwrap_variant_detects_violation() {
+        let (source, ast) = parse_fixture("no-unwrap-variant");
+        let errors = check_no_unwrap_variant(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_unwrap_variant_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-unwrap-variant");
+        let errors = check_no_unwrap_variant(&source, &ast);
         assert!(errors.is_empty());
     }
 
