@@ -73,11 +73,19 @@ fn check_exact_versions(pkg: &serde_json::Value) -> Vec<String> {
     errors
 }
 
-fn find(patterns: &[&str], excludes: &[&str]) -> Vec<String> {
-    patterns
-        .iter()
-        .flat_map(|pattern| find_files(pattern, excludes).unwrap_or_default())
-        .collect()
+fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
+    for pattern in patterns {
+        match find_files(pattern, excludes) {
+            Ok(found) => files.extend(found),
+            Err(err) => errors.push(AppError::Glob {
+                pattern: (*pattern).to_string(),
+                message: err.to_string(),
+            }),
+        }
+    }
+    (files, errors)
 }
 
 fn parse_package_jsons(paths: Vec<String>) -> (Vec<ParsedPackageJson>, Vec<AppError>) {
@@ -88,12 +96,12 @@ fn parse_package_jsons(paths: Vec<String>) -> (Vec<ParsedPackageJson>, Vec<AppEr
         match fs::read_to_string(&path) {
             Ok(content) => match serde_json::from_str(&content) {
                 Ok(pkg) => parsed.push(ParsedPackageJson { path, pkg }),
-                Err(err) => errors.push(AppError::ParseFailed {
+                Err(err) => errors.push(AppError::Parse {
                     file: path,
                     message: err.to_string(),
                 }),
             },
-            Err(err) => errors.push(AppError::ReadFailed {
+            Err(err) => errors.push(AppError::Read {
                 file: path,
                 message: err.to_string(),
             }),
@@ -127,7 +135,7 @@ fn run_package_json_rules(
 }
 
 fn line_number(source: &str, offset: u32) -> usize {
-    let offset_usize = usize::try_from(offset).unwrap_or(0);
+    let offset_usize = usize::try_from(offset).expect("u32 fits in usize on 32+ bit systems");
     source.get(..offset_usize).map_or(1, |slice| {
         slice.chars().filter(|ch| *ch == '\n').count() + 1
     })
@@ -237,9 +245,12 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         ) && is_silent_default(&expr.right)
         {
             let line = line_number(self.source, expr.span.start);
-            let start = usize::try_from(expr.span.start).unwrap_or(0);
-            let end = usize::try_from(expr.span.end).unwrap_or(0);
-            let text = self.source.get(start..end).unwrap_or("<unknown>");
+            let start = usize::try_from(expr.span.start).expect("u32 fits in usize");
+            let end = usize::try_from(expr.span.end).expect("u32 fits in usize");
+            let text = self
+                .source
+                .get(start..end)
+                .expect("parser offsets are valid");
             self.silent_default_errors
                 .push(format!("line {line}: {text}"));
         }
@@ -353,7 +364,7 @@ fn check_ts_files(paths: Vec<String>) -> (Vec<Violation>, Vec<AppError>) {
                 let result = parser.parse();
 
                 if result.panicked {
-                    errors.push(AppError::ParseFailed {
+                    errors.push(AppError::Parse {
                         file: path,
                         message: "Parser panicked".to_string(),
                     });
@@ -364,7 +375,7 @@ fn check_ts_files(paths: Vec<String>) -> (Vec<Violation>, Vec<AppError>) {
                 visitor.visit_program(&result.program);
                 all_violations.extend(collect_violations(visitor));
             }
-            Err(err) => errors.push(AppError::ReadFailed {
+            Err(err) => errors.push(AppError::Read {
                 file: path,
                 message: err.to_string(),
             }),
@@ -375,18 +386,21 @@ fn check_ts_files(paths: Vec<String>) -> (Vec<Violation>, Vec<AppError>) {
 }
 
 pub fn check() -> CheckResult {
-    let package_json_paths = find(PACKAGE_JSON_PATTERNS, EXCLUDES);
-    let ts_paths = find(TS_PATTERNS, EXCLUDES);
+    let (package_json_paths, mut errors) = find(PACKAGE_JSON_PATTERNS, EXCLUDES);
+    let (ts_paths, ts_glob_errors) = find(TS_PATTERNS, EXCLUDES);
+    errors.extend(ts_glob_errors);
 
     let (parsed_packages, pkg_errors) = parse_package_jsons(package_json_paths);
+    errors.extend(pkg_errors);
     let pkg_violations = run_package_json_rules(&parsed_packages, PACKAGE_JSON_RULES);
 
     let (ts_violations, ts_errors) = check_ts_files(ts_paths);
+    errors.extend(ts_errors);
 
     let file_count = parsed_packages.len() + ts_violations.len();
 
     CheckResult {
-        errors: [pkg_errors, ts_errors].concat(),
+        errors,
         file_count,
         violations: [pkg_violations, ts_violations].concat(),
     }

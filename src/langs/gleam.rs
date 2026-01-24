@@ -98,11 +98,19 @@ fn check_exact_versions(toml: &toml::Value, _path: &str) -> Vec<String> {
     errors
 }
 
-fn find(patterns: &[&str], excludes: &[&str]) -> Vec<String> {
-    patterns
-        .iter()
-        .flat_map(|pattern| find_files(pattern, excludes).unwrap_or_default())
-        .collect()
+fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
+    for pattern in patterns {
+        match find_files(pattern, excludes) {
+            Ok(found) => files.extend(found),
+            Err(err) => errors.push(AppError::Glob {
+                pattern: (*pattern).to_string(),
+                message: err.to_string(),
+            }),
+        }
+    }
+    (files, errors)
 }
 
 fn parse_gleam_tomls(paths: Vec<String>) -> (Vec<ParsedGleamToml>, Vec<AppError>) {
@@ -113,12 +121,12 @@ fn parse_gleam_tomls(paths: Vec<String>) -> (Vec<ParsedGleamToml>, Vec<AppError>
         match fs::read_to_string(&path) {
             Ok(content) => match toml::from_str::<toml::Value>(&content) {
                 Ok(toml) => parsed.push(ParsedGleamToml { path, toml }),
-                Err(err) => errors.push(AppError::ParseFailed {
+                Err(err) => errors.push(AppError::Parse {
                     file: path,
                     message: err.to_string(),
                 }),
             },
-            Err(err) => errors.push(AppError::ReadFailed {
+            Err(err) => errors.push(AppError::Read {
                 file: path,
                 message: err.to_string(),
             }),
@@ -155,7 +163,7 @@ fn parse_gleam(paths: Vec<String>) -> (Vec<ParsedGleam>, Vec<AppError>) {
     for path in paths {
         match fs::read_to_string(&path) {
             Ok(source) => parsed.push(ParsedGleam { path, source }),
-            Err(err) => errors.push(AppError::ReadFailed {
+            Err(err) => errors.push(AppError::Read {
                 file: path,
                 message: err.to_string(),
             }),
@@ -186,17 +194,17 @@ fn run_gleam_rules(files: &[ParsedGleam], rules: &[GleamRule]) -> Vec<Violation>
 }
 
 pub fn check() -> CheckResult {
-    let gleam_paths = find(GLEAM_PATTERNS, EXCLUDES);
-    let gleam_toml_paths = find(GLEAM_TOML_PATTERNS, EXCLUDES);
+    let (gleam_paths, mut errors) = find(GLEAM_PATTERNS, EXCLUDES);
+    let (gleam_toml_paths, toml_glob_errors) = find(GLEAM_TOML_PATTERNS, EXCLUDES);
+    errors.extend(toml_glob_errors);
 
     let (parsed_gleam, gleam_errors) = parse_gleam(gleam_paths);
     let (parsed_tomls, toml_errors) = parse_gleam_tomls(gleam_toml_paths);
+    errors.extend(gleam_errors);
+    errors.extend(toml_errors);
 
     let mut violations = run_gleam_rules(&parsed_gleam, GLEAM_RULES);
     violations.extend(run_gleam_toml_rules(&parsed_tomls, GLEAM_TOML_RULES));
-
-    let mut errors = gleam_errors;
-    errors.extend(toml_errors);
 
     CheckResult {
         errors,

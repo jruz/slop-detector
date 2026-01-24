@@ -172,11 +172,19 @@ fn check_banned_providers(body: &Body, path: &str) -> Vec<Violation> {
         .collect()
 }
 
-fn find(patterns: &[&str], excludes: &[&str]) -> Vec<String> {
-    patterns
-        .iter()
-        .flat_map(|pattern| find_files(pattern, excludes).unwrap_or_default())
-        .collect()
+fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
+    for pattern in patterns {
+        match find_files(pattern, excludes) {
+            Ok(found) => files.extend(found),
+            Err(err) => errors.push(AppError::Glob {
+                pattern: (*pattern).to_string(),
+                message: err.to_string(),
+            }),
+        }
+    }
+    (files, errors)
 }
 
 fn parse(paths: Vec<String>) -> (Vec<ParsedTfFile>, Vec<AppError>) {
@@ -187,12 +195,12 @@ fn parse(paths: Vec<String>) -> (Vec<ParsedTfFile>, Vec<AppError>) {
         match fs::read_to_string(&path) {
             Ok(content) => match hcl::from_str(&content) {
                 Ok(body) => parsed.push(ParsedTfFile { body, path }),
-                Err(err) => errors.push(AppError::ParseFailed {
+                Err(err) => errors.push(AppError::Parse {
                     file: path,
                     message: err.to_string(),
                 }),
             },
-            Err(err) => errors.push(AppError::ReadFailed {
+            Err(err) => errors.push(AppError::Read {
                 file: path,
                 message: err.to_string(),
             }),
@@ -214,8 +222,9 @@ fn run_rules(files: &[ParsedTfFile], rules: &[Rule]) -> Vec<Violation> {
 }
 
 pub fn check() -> CheckResult {
-    let paths = find(PATTERNS, EXCLUDES);
-    let (parsed, errors) = parse(paths);
+    let (paths, mut errors) = find(PATTERNS, EXCLUDES);
+    let (parsed, parse_errors) = parse(paths);
+    errors.extend(parse_errors);
     let violations = run_rules(&parsed, RULES);
 
     CheckResult {
