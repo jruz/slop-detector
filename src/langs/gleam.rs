@@ -25,11 +25,18 @@ struct GleamRule {
     name: &'static str,
 }
 
-const GLEAM_RULES: &[GleamRule] = &[GleamRule {
-    check: check_no_unwrap,
-    hint: Some("use pattern matching or let assert instead"),
-    name: "no-unwrap",
-}];
+const GLEAM_RULES: &[GleamRule] = &[
+    GleamRule {
+        check: check_no_ignored_error,
+        hint: Some("handle or propagate the error instead of ignoring it"),
+        name: "no-ignored-error",
+    },
+    GleamRule {
+        check: check_no_unwrap,
+        hint: Some("use pattern matching or let assert instead"),
+        name: "no-unwrap",
+    },
+];
 
 struct ParsedGleam {
     path: String,
@@ -40,6 +47,18 @@ fn line_number(source: &str, byte_offset: usize) -> usize {
     source.get(..byte_offset).map_or(1, |slice| {
         slice.chars().filter(|ch| *ch == '\n').count() + 1
     })
+}
+
+const IGNORED_ERROR_PATTERN: &str = "Error(_)";
+
+fn check_no_ignored_error(source: &str) -> Vec<String> {
+    source
+        .match_indices(IGNORED_ERROR_PATTERN)
+        .map(|(pos, _)| {
+            let line = line_number(source, pos);
+            format!("line {line}: {IGNORED_ERROR_PATTERN}")
+        })
+        .collect()
 }
 
 const UNWRAP_PATTERN: &str = ".unwrap\x28";
@@ -235,6 +254,20 @@ mod tests {
         let content = read_fixture("valid-versions.toml");
         let toml: toml::Value = toml::from_str(&content).expect("valid toml");
         let errors = check_exact_versions(&toml, "test");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_ignored_error_detects_violation() {
+        let source = read_fixture("no-ignored-error.gleam");
+        let errors = check_no_ignored_error(&source);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_ignored_error_allows_valid() {
+        let source = read_fixture("valid-no-ignored-error.gleam");
+        let errors = check_no_ignored_error(&source);
         assert!(errors.is_empty());
     }
 
