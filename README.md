@@ -44,29 +44,47 @@ slop-detector --create-config-for-violations
 - `no-unwrap` - Use pattern matching or let assert instead
 
 ### JS/TS
-- `no-interface` - Use type instead of interface
-- `no-silent-defaults` - Avoid `x || []`, `x ?? {}` patterns
+- `exact-versions` - Pin dependency versions in package.json
 - `no-console` - Keep console calls in main() only
-- `no-throw` - Return Result.err() instead
 - `no-early-return` - Return Result/Option instead
+- `no-interface` - Use type instead of interface
 - `no-scripts-section` - No scripts in package.json
+- `no-silent-defaults` - Avoid `x || []`, `x ?? {}` patterns
 - `no-stderr-write` - Avoid writing to stderr
-- `exact-versions` - Pin dependency versions
+- `no-throw` - Return Result.err() instead
 
 ### Rust
 - `no-allow-attr` - Refactor instead of suppressing lints
+- `no-catch-unwind` - Do not swallow panics
 - `no-cfg-attr-suppress` - No cfg_attr with allow/expect
+- `no-discard-result` - Handle Result instead of `let _ =`
+- `no-drop-result` - Handle Result instead of dropping
+- `no-empty-err-match` - Handle error case in match arms
 - `no-expect-attr` - Refactor instead of suppressing lints
 - `no-expect-outside-tests` - Use ? or match, expect only in tests
+- `no-if-let-ok-without-else` - Add else to handle error case
 - `no-impl` - Use free functions
-- `no-trait-impl` - Avoid trait implementations
+- `no-is-ok-is-err` - Use the value instead of just checking
+- `no-map-err-discard` - Preserve original error in map_err
+- `no-mem-forget` - Do not leak resources
+- `no-ok-and-propagate` - Use ? on Result directly, not .ok()?
+- `no-ok-method` - Handle error explicitly, don't discard with .ok()
 - `no-print-outside-main` - Keep print statements in main()
+- `no-trait-impl` - Avoid trait implementations
+- `no-unit-error` - Use meaningful error types, not ()
+- `no-unwrap-err` - Handle Ok case explicitly
+- `no-unwrap-or` - Avoid silent defaults
+- `no-unwrap-or-default` - Avoid silent defaults
+- `no-unwrap-or-else` - Avoid silent defaults
+- `no-unwrap-unchecked` - Use safe unwrap methods
+- `no-while-let-ok` - Handle errors explicitly, don't silently stop
+- `no-wildcard-err` - Capture error value, don't discard with Err(_)
 
 ### OpenTofu
-- `banned-resource` - No terraform_data
 - `banned-data-source` - No external data source
-- `banned-provisioner` - No local-exec/remote-exec
 - `banned-provider` - No external provider
+- `banned-provisioner` - No local-exec/remote-exec
+- `banned-resource` - No terraform_data
 
 ## License
 
