@@ -8,6 +8,7 @@ use crate::types::{AppError, CheckResult, Violation};
 
 const EXCLUDES: &[&str] = &["target", ".git", "fixtures"];
 const PATTERNS: &[&str] = &["**/*.rs"];
+const CARGO_TOML_PATTERNS: &[&str] = &["**/Cargo.toml"];
 
 struct Rule {
     check: fn(source: &str, ast: &SourceFile) -> Vec<String>,
@@ -143,10 +144,60 @@ const RULES: &[Rule] = &[
     },
 ];
 
+struct CargoTomlRule {
+    check: fn(toml: &toml::Value) -> Vec<String>,
+    hint: Option<&'static str>,
+    name: &'static str,
+}
+
+const CARGO_TOML_RULES: &[CargoTomlRule] = &[CargoTomlRule {
+    check: check_pinned_versions,
+    hint: Some("specify full semver version (e.g., \"1.0.95\" instead of \"1\" or \"1.0\")"),
+    name: "pinned-versions",
+}];
+
+struct ParsedCargoToml {
+    path: String,
+    toml: toml::Value,
+}
+
 struct ParsedFile {
     ast: SourceFile,
     path: String,
     source: String,
+}
+
+fn is_incomplete_version(version: &str) -> bool {
+    let parts: Vec<&str> = version.split('.').collect();
+    parts.len() < 3 || parts.iter().any(|part| part.is_empty())
+}
+
+fn check_pinned_versions(toml: &toml::Value) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    let dep_sections = ["dependencies", "dev-dependencies", "build-dependencies"];
+
+    for section in dep_sections {
+        let Some(deps) = toml.get(section).and_then(toml::Value::as_table) else {
+            continue;
+        };
+
+        for (name, value) in deps {
+            let version = match value {
+                toml::Value::String(ver) => Some(ver.as_str()),
+                toml::Value::Table(table) => table.get("version").and_then(toml::Value::as_str),
+                _ => None,
+            };
+
+            if let Some(ver) = version
+                && is_incomplete_version(ver)
+            {
+                errors.push(format!("{section}.{name}: \"{ver}\" incomplete version"));
+            }
+        }
+    }
+
+    errors
 }
 
 const ALLOW_ATTR: &str = "allow";
@@ -692,6 +743,29 @@ fn parse(paths: Vec<String>) -> (Vec<ParsedFile>, Vec<AppError>) {
     (parsed, errors)
 }
 
+fn parse_cargo_tomls(paths: Vec<String>) -> (Vec<ParsedCargoToml>, Vec<AppError>) {
+    let mut parsed = Vec::new();
+    let mut errors = Vec::new();
+
+    for path in paths {
+        match fs::read_to_string(&path) {
+            Ok(content) => match toml::from_str::<toml::Value>(&content) {
+                Ok(toml) => parsed.push(ParsedCargoToml { path, toml }),
+                Err(err) => errors.push(AppError::Parse {
+                    file: path,
+                    message: err.to_string(),
+                }),
+            },
+            Err(err) => errors.push(AppError::Read {
+                file: path,
+                message: err.to_string(),
+            }),
+        }
+    }
+
+    (parsed, errors)
+}
+
 fn run_rules(files: &[ParsedFile], rules: &[Rule]) -> Vec<Violation> {
     files
         .iter()
@@ -712,15 +786,42 @@ fn run_rules(files: &[ParsedFile], rules: &[Rule]) -> Vec<Violation> {
         .collect()
 }
 
+fn run_cargo_toml_rules(files: &[ParsedCargoToml], rules: &[CargoTomlRule]) -> Vec<Violation> {
+    files
+        .iter()
+        .flat_map(|file| {
+            rules.iter().filter_map(|rule| {
+                let errors = (rule.check)(&file.toml);
+                if errors.is_empty() {
+                    return None;
+                }
+                Some(Violation {
+                    errors,
+                    file: file.path.clone(),
+                    hint: rule.hint.map(String::from),
+                    rule: rule.name.to_string(),
+                })
+            })
+        })
+        .collect()
+}
+
 pub fn check() -> CheckResult {
     let (paths, mut errors) = find(PATTERNS, EXCLUDES);
+    let (cargo_toml_paths, cargo_toml_glob_errors) = find(CARGO_TOML_PATTERNS, EXCLUDES);
+    errors.extend(cargo_toml_glob_errors);
+
     let (parsed, parse_errors) = parse(paths);
+    let (parsed_cargo_tomls, cargo_toml_errors) = parse_cargo_tomls(cargo_toml_paths);
     errors.extend(parse_errors);
-    let violations = run_rules(&parsed, RULES);
+    errors.extend(cargo_toml_errors);
+
+    let mut violations = run_rules(&parsed, RULES);
+    violations.extend(run_cargo_toml_rules(&parsed_cargo_tomls, CARGO_TOML_RULES));
 
     CheckResult {
         errors,
-        file_count: parsed.len(),
+        file_count: parsed.len() + parsed_cargo_tomls.len(),
         violations,
     }
 }
@@ -734,6 +835,26 @@ mod tests {
         let source = fs::read_to_string(&path).expect("fixture should exist");
         let parse_result = SourceFile::parse(&source, ra_ap_syntax::Edition::Edition2024);
         (source, parse_result.tree())
+    }
+
+    fn read_toml_fixture(name: &str) -> toml::Value {
+        let path = format!("fixtures/rust/{name}.toml");
+        let content = fs::read_to_string(&path).expect("fixture should exist");
+        toml::from_str(&content).expect("valid toml")
+    }
+
+    #[test]
+    fn pinned_versions_detects_violation() {
+        let toml = read_toml_fixture("pinned-versions");
+        let errors = check_pinned_versions(&toml);
+        assert_eq!(errors.len(), 2);
+    }
+
+    #[test]
+    fn pinned_versions_allows_valid() {
+        let toml = read_toml_fixture("valid-pinned-versions");
+        let errors = check_pinned_versions(&toml);
+        assert!(errors.is_empty());
     }
 
     #[test]
