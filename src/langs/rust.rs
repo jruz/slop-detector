@@ -78,6 +78,13 @@ const RULES: &[Rule] = &[
         name: "no-map-discard",
     },
     Rule {
+        check: check_no_map_err,
+        hint: Some(
+            "add #[from] to thiserror enum variant and use ? operator instead of .map_err()",
+        ),
+        name: "no-map-err",
+    },
+    Rule {
         check: check_no_map_err_discard,
         hint: Some("preserve the original error information in map_err"),
         name: "no-map-err-discard",
@@ -482,6 +489,10 @@ fn check_no_map_discard(source: &str, ast: &SourceFile) -> Vec<String> {
             Some(format!("line {line}: .map(|_| ...)"))
         })
         .collect()
+}
+
+fn check_no_map_err(source: &str, ast: &SourceFile) -> Vec<String> {
+    check_method_call(source, ast, "map_err")
 }
 
 fn check_no_map_err_discard(source: &str, ast: &SourceFile) -> Vec<String> {
@@ -1044,6 +1055,20 @@ mod tests {
     fn no_map_discard_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-map-discard");
         let errors = check_no_map_discard(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_map_err_detects_violation() {
+        let (source, ast) = parse_fixture("no-map-err");
+        let errors = check_no_map_err(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_map_err_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-map-err");
+        let errors = check_no_map_err(&source, &ast);
         assert!(errors.is_empty());
     }
 
