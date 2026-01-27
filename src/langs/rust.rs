@@ -448,9 +448,10 @@ fn check_no_impl(source: &str, ast: &SourceFile) -> Vec<String> {
                 return None;
             }
             let line = line_number(source, impl_node.syntax().text_range().start().into());
-            let self_ty = impl_node
-                .self_ty()
-                .map_or_else(|| "block".to_string(), |ty| ty.to_string());
+            let self_ty = match impl_node.self_ty() {
+                Some(ty) => ty.to_string(),
+                None => "block".to_string(),
+            };
             Some(format!("line {line}: impl {self_ty}"))
         })
         .collect()
@@ -599,9 +600,10 @@ fn check_no_trait_impl(source: &str, ast: &SourceFile) -> Vec<String> {
             let impl_node = ast::Impl::cast(node)?;
             let trait_ref = impl_node.trait_()?;
             let line = line_number(source, impl_node.syntax().text_range().start().into());
-            let self_ty = impl_node
-                .self_ty()
-                .map_or_else(|| "block".to_string(), |ty| ty.to_string());
+            let self_ty = match impl_node.self_ty() {
+                Some(ty) => ty.to_string(),
+                None => "block".to_string(),
+            };
             Some(format!("line {line}: impl {trait_ref} for {self_ty}"))
         })
         .collect()
