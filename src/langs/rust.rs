@@ -73,6 +73,11 @@ const RULES: &[Rule] = &[
         name: "no-is-ok-is-err",
     },
     Rule {
+        check: check_no_map_discard,
+        hint: Some("do not hide errors by discarding the value"),
+        name: "no-map-discard",
+    },
+    Rule {
         check: check_no_map_err_discard,
         hint: Some("preserve the original error information in map_err"),
         name: "no-map-err-discard",
@@ -451,6 +456,30 @@ fn check_no_is_ok_is_err(source: &str, ast: &SourceFile) -> Vec<String> {
             }
             let line = line_number(source, node.text_range().start().into());
             Some(format!("line {line}: .{method_name}()"))
+        })
+        .collect()
+}
+
+fn check_no_map_discard(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
+                return None;
+            }
+            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let method_name = method_call.name_ref()?.text().to_string();
+            if method_name != "map" {
+                return None;
+            }
+            let arg_list = method_call.arg_list()?;
+            let first_arg = arg_list.args().next()?;
+            let arg_str = first_arg.to_string();
+            if !arg_str.contains("|_|") {
+                return None;
+            }
+            let line = line_number(source, node.text_range().start().into());
+            Some(format!("line {line}: .map(|_| ...)"))
         })
         .collect()
 }
@@ -1001,6 +1030,20 @@ mod tests {
     fn no_is_ok_is_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-is-ok-is-err");
         let errors = check_no_is_ok_is_err(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_map_discard_detects_violation() {
+        let (source, ast) = parse_fixture("no-map-discard");
+        let errors = check_no_map_discard(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_map_discard_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-map-discard");
+        let errors = check_no_map_discard(&source, &ast);
         assert!(errors.is_empty());
     }
 
