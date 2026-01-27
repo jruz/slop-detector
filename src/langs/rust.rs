@@ -90,6 +90,13 @@ const RULES: &[Rule] = &[
         name: "no-map-err-discard",
     },
     Rule {
+        check: check_no_map_or_else,
+        hint: Some(
+            "use match for explicit handling or convert Option to Result with .ok_or_else()",
+        ),
+        name: "no-map-or-else",
+    },
+    Rule {
         check: check_no_mem_forget,
         hint: Some("do not use mem::forget to leak resources"),
         name: "no-mem-forget",
@@ -517,6 +524,10 @@ fn check_no_map_err_discard(source: &str, ast: &SourceFile) -> Vec<String> {
             Some(format!("line {line}: .map_err(|_| ...)"))
         })
         .collect()
+}
+
+fn check_no_map_or_else(source: &str, ast: &SourceFile) -> Vec<String> {
+    check_method_call(source, ast, "map_or_else")
 }
 
 fn check_no_mem_forget(source: &str, ast: &SourceFile) -> Vec<String> {
@@ -1083,6 +1094,20 @@ mod tests {
     fn no_map_err_discard_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-map-err-discard");
         let errors = check_no_map_err_discard(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_map_or_else_detects_violation() {
+        let (source, ast) = parse_fixture("no-map-or-else");
+        let errors = check_no_map_or_else(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_map_or_else_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-map-or-else");
+        let errors = check_no_map_or_else(&source, &ast);
         assert!(errors.is_empty());
     }
 
