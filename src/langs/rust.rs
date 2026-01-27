@@ -122,6 +122,11 @@ const RULES: &[Rule] = &[
         name: "no-trait-impl",
     },
     Rule {
+        check: check_thiserror_unused_fields,
+        hint: Some("all named fields should appear in the #[error(\"...\")] format string"),
+        name: "thiserror-unused-fields",
+    },
+    Rule {
         check: check_no_unit_error,
         hint: Some("use a meaningful error type instead of ()"),
         name: "no-unit-error",
@@ -607,6 +612,124 @@ fn check_no_trait_impl(source: &str, ast: &SourceFile) -> Vec<String> {
             Some(format!("line {line}: impl {trait_ref} for {self_ty}"))
         })
         .collect()
+}
+
+fn has_thiserror_derive(enum_node: &ast::Enum) -> bool {
+    enum_node.syntax().children().any(|child| {
+        if child.kind() != SyntaxKind::ATTR {
+            return false;
+        }
+        let Some(attr) = ast::Attr::cast(child) else {
+            return false;
+        };
+        let Some(path) = attr.path() else {
+            return false;
+        };
+        if path.to_string() != "derive" {
+            return false;
+        }
+        let Some(token_tree) = attr.token_tree() else {
+            return false;
+        };
+        let text = token_tree.to_string();
+        text.contains("thiserror::Error") || text.contains("thiserror :: Error")
+    })
+}
+
+fn extract_error_attr_format(variant: &ast::Variant) -> Option<String> {
+    variant.syntax().children().find_map(|child| {
+        if child.kind() != SyntaxKind::ATTR {
+            return None;
+        }
+        let attr = ast::Attr::cast(child)?;
+        let path = attr.path()?;
+        if path.to_string() != "error" {
+            return None;
+        }
+        let token_tree = attr.token_tree()?;
+        Some(token_tree.to_string())
+    })
+}
+
+fn extract_format_placeholders(format_str: &str) -> Vec<String> {
+    let mut placeholders = Vec::new();
+    let mut chars = format_str.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '{' {
+            if chars.peek() == Some(&'{') {
+                chars.next();
+                continue;
+            }
+            let mut name = String::new();
+            for inner_ch in chars.by_ref() {
+                if inner_ch == '}' || inner_ch == ':' {
+                    break;
+                }
+                name.push(inner_ch);
+            }
+            if !name.is_empty()
+                && !name
+                    .chars()
+                    .next()
+                    .is_some_and(|first| first.is_ascii_digit())
+            {
+                placeholders.push(name);
+            }
+        }
+    }
+    placeholders
+}
+
+fn check_thiserror_unused_fields(source: &str, ast: &SourceFile) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    for node in ast.syntax().descendants() {
+        if node.kind() != SyntaxKind::ENUM {
+            continue;
+        }
+        let Some(enum_node) = ast::Enum::cast(node) else {
+            continue;
+        };
+        if !has_thiserror_derive(&enum_node) {
+            continue;
+        }
+        let Some(variant_list) = enum_node.variant_list() else {
+            continue;
+        };
+        for variant in variant_list.variants() {
+            let Some(field_list) = variant.field_list() else {
+                continue;
+            };
+            let ast::FieldList::RecordFieldList(record_fields) = field_list else {
+                continue;
+            };
+            let field_names: Vec<String> = record_fields
+                .fields()
+                .filter_map(|field| field.name().map(|name| name.text().to_string()))
+                .collect();
+            if field_names.is_empty() {
+                continue;
+            }
+            let Some(format_str) = extract_error_attr_format(&variant) else {
+                continue;
+            };
+            let placeholders = extract_format_placeholders(&format_str);
+            for field_name in &field_names {
+                if !placeholders.contains(field_name) {
+                    let line = line_number(source, variant.syntax().text_range().start().into());
+                    let variant_name = match variant.name() {
+                        Some(name) => name.text().to_string(),
+                        None => "?".to_string(),
+                    };
+                    errors.push(format!(
+                        "line {line}: {variant_name}::{field_name} not in #[error(\"...\")]"
+                    ));
+                }
+            }
+        }
+    }
+
+    errors
 }
 
 fn check_no_unwrap_err(source: &str, ast: &SourceFile) -> Vec<String> {
@@ -1285,6 +1408,20 @@ mod tests {
     fn no_wildcard_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-wildcard-err");
         let errors = check_no_wildcard_err(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn thiserror_unused_fields_detects_violation() {
+        let (source, ast) = parse_fixture("thiserror-unused-fields");
+        let errors = check_thiserror_unused_fields(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn thiserror_unused_fields_allows_valid() {
+        let (source, ast) = parse_fixture("valid-thiserror-unused-fields");
+        let errors = check_thiserror_unused_fields(&source, &ast);
         assert!(errors.is_empty());
     }
 }
