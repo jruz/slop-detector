@@ -78,13 +78,6 @@ const RULES: &[Rule] = &[
         name: "no-map-discard",
     },
     Rule {
-        check: check_no_map_err,
-        hint: Some(
-            "add #[from] to thiserror enum variant and use ? operator instead of .map_err()",
-        ),
-        name: "no-map-err",
-    },
-    Rule {
         check: check_no_map_err_discard,
         hint: Some("preserve the original error information in map_err"),
         name: "no-map-err-discard",
@@ -504,8 +497,17 @@ fn check_no_map_discard(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_map_err(source: &str, ast: &SourceFile) -> Vec<String> {
-    check_method_call(source, ast, "map_err")
+fn has_discarded_closure_param(arg_str: &str) -> bool {
+    let mut chars = arg_str.chars().peekable();
+    for ch in chars.by_ref() {
+        if ch == '|' {
+            break;
+        }
+    }
+    while chars.peek() == Some(&' ') {
+        chars.next();
+    }
+    chars.peek() == Some(&'_')
 }
 
 fn check_no_map_err_discard(source: &str, ast: &SourceFile) -> Vec<String> {
@@ -523,7 +525,7 @@ fn check_no_map_err_discard(source: &str, ast: &SourceFile) -> Vec<String> {
             let arg_list = method_call.arg_list()?;
             let first_arg = arg_list.args().next()?;
             let arg_str = first_arg.to_string();
-            if !arg_str.contains("|_|") {
+            if !has_discarded_closure_param(&arg_str) {
                 return None;
             }
             let line = line_number(source, node.text_range().start().into());
@@ -1195,24 +1197,10 @@ mod tests {
     }
 
     #[test]
-    fn no_map_err_detects_violation() {
-        let (source, ast) = parse_fixture("no-map-err");
-        let errors = check_no_map_err(&source, &ast);
-        assert_eq!(errors.len(), 1);
-    }
-
-    #[test]
-    fn no_map_err_allows_valid() {
-        let (source, ast) = parse_fixture("valid-no-map-err");
-        let errors = check_no_map_err(&source, &ast);
-        assert!(errors.is_empty());
-    }
-
-    #[test]
     fn no_map_err_discard_detects_violation() {
         let (source, ast) = parse_fixture("no-map-err-discard");
         let errors = check_no_map_err_discard(&source, &ast);
-        assert_eq!(errors.len(), 1);
+        assert_eq!(errors.len(), 2);
     }
 
     #[test]
