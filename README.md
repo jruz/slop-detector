@@ -71,6 +71,7 @@ slop-detector --create-config-for-violations
 - `no-ok-method` - Handle error explicitly, don't discard with .ok()
 - `no-print-outside-main` - Keep print statements in main()
 - `no-return-ok` - Don't hide errors with return Ok(())
+- `no-stderr-null` - Don't silence stderr with Stdio::null()
 - `no-trait-impl` - Avoid trait implementations
 - `no-unit-error` - Use meaningful error types, not ()
 - `no-unwrap-err` - Handle Ok case explicitly

@@ -115,6 +115,11 @@ const RULES: &[Rule] = &[
         name: "no-return-ok",
     },
     Rule {
+        check: check_no_stderr_null,
+        hint: Some("do not silence stderr, capture and handle it"),
+        name: "no-stderr-null",
+    },
+    Rule {
         check: check_no_trait_impl,
         hint: Some("trait impls are banned unless required by external crates"),
         name: "no-trait-impl",
@@ -1036,6 +1041,30 @@ fn check_no_return_ok(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
+fn check_no_stderr_null(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
+                return None;
+            }
+            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let method_name = method_call.name_ref()?.text().to_string();
+            if method_name != "stderr" {
+                return None;
+            }
+            let arg_list = method_call.arg_list()?;
+            let first_arg = arg_list.args().next()?;
+            let arg_str = first_arg.to_string();
+            if !arg_str.contains("null()") {
+                return None;
+            }
+            let line = line_number(source, node.text_range().start().into());
+            Some(format!("line {line}: .stderr(Stdio::null())"))
+        })
+        .collect()
+}
+
 fn line_number(source: &str, offset: usize) -> usize {
     source.get(..offset).map_or(1, |slice| {
         slice.chars().filter(|ch| *ch == '\n').count() + 1
@@ -1463,6 +1492,20 @@ mod tests {
     fn no_return_ok_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-return-ok");
         let errors = check_no_return_ok(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_stderr_null_detects_violation() {
+        let (source, ast) = parse_fixture("no-stderr-null");
+        let errors = check_no_stderr_null(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_stderr_null_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-stderr-null");
+        let errors = check_no_stderr_null(&source, &ast);
         assert!(errors.is_empty());
     }
 
