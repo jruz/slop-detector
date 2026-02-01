@@ -115,6 +115,11 @@ const RULES: &[Rule] = &[
         name: "no-return-ok",
     },
     Rule {
+        check: check_no_spawn,
+        hint: Some("use .output() or .status() to capture and handle command results"),
+        name: "no-spawn",
+    },
+    Rule {
         check: check_no_stderr_null,
         hint: Some("do not silence stderr, capture and handle it"),
         name: "no-stderr-null",
@@ -1041,6 +1046,10 @@ fn check_no_return_ok(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
+fn check_no_spawn(source: &str, ast: &SourceFile) -> Vec<String> {
+    check_method_call(source, ast, "spawn")
+}
+
 fn check_no_stderr_null(source: &str, ast: &SourceFile) -> Vec<String> {
     ast.syntax()
         .descendants()
@@ -1492,6 +1501,20 @@ mod tests {
     fn no_return_ok_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-return-ok");
         let errors = check_no_return_ok(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_spawn_detects_violation() {
+        let (source, ast) = parse_fixture("no-spawn");
+        let errors = check_no_spawn(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_spawn_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-spawn");
+        let errors = check_no_spawn(&source, &ast);
         assert!(errors.is_empty());
     }
 
