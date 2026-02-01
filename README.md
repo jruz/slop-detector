@@ -70,6 +70,7 @@ slop-detector --create-config-for-violations
 - `no-ok-and-propagate` - Use ? on Result directly, not .ok()?
 - `no-ok-method` - Handle error explicitly, don't discard with .ok()
 - `no-print-outside-main` - Keep print statements in main()
+- `no-return-ok` - Don't hide errors with return Ok(())
 - `no-trait-impl` - Avoid trait implementations
 - `no-unit-error` - Use meaningful error types, not ()
 - `no-unwrap-err` - Handle Ok case explicitly

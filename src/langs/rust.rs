@@ -110,6 +110,11 @@ const RULES: &[Rule] = &[
         name: "no-print-outside-main",
     },
     Rule {
+        check: check_no_return_ok,
+        hint: Some("return Ok(()) hides errors, handle the condition properly"),
+        name: "no-return-ok",
+    },
+    Rule {
         check: check_no_trait_impl,
         hint: Some("trait impls are banned unless required by external crates"),
         name: "no-trait-impl",
@@ -1012,6 +1017,25 @@ fn check_no_print_outside_main(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
+fn check_no_return_ok(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::RETURN_EXPR {
+                return None;
+            }
+            let return_expr = ast::ReturnExpr::cast(node.clone())?;
+            let expr = return_expr.expr()?;
+            let expr_str = expr.to_string();
+            if expr_str != "Ok(())" {
+                return None;
+            }
+            let line = line_number(source, node.text_range().start().into());
+            Some(format!("line {line}: return Ok(())"))
+        })
+        .collect()
+}
+
 fn line_number(source: &str, offset: usize) -> usize {
     source.get(..offset).map_or(1, |slice| {
         slice.chars().filter(|ch| *ch == '\n').count() + 1
@@ -1425,6 +1449,20 @@ mod tests {
     fn no_print_outside_main_allows_valid() {
         let (source, ast) = parse_fixture("valid-print-in-main");
         let errors = check_no_print_outside_main(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_return_ok_detects_violation() {
+        let (source, ast) = parse_fixture("no-return-ok");
+        let errors = check_no_return_ok(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_return_ok_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-return-ok");
+        let errors = check_no_return_ok(&source, &ast);
         assert!(errors.is_empty());
     }
 
