@@ -43,11 +43,6 @@ const RULES: &[Rule] = &[
         name: "no-drop-result",
     },
     Rule {
-        check: check_no_empty_err_match,
-        hint: Some("handle the error case instead of using an empty Err arm"),
-        name: "no-empty-err-match",
-    },
-    Rule {
         check: check_no_expect_attr,
         hint: Some("refactor code to satisfy the linter instead of suppressing"),
         name: "no-expect-attr",
@@ -173,11 +168,6 @@ const RULES: &[Rule] = &[
         check: check_no_while_let_ok,
         hint: Some("while let Ok silently stops on errors, handle errors explicitly"),
         name: "no-while-let-ok",
-    },
-    Rule {
-        check: check_no_wildcard_err,
-        hint: Some("capture the error value instead of discarding it with Err(_)"),
-        name: "no-wildcard-err",
     },
     Rule {
         check: check_no_swallowed_err,
@@ -485,30 +475,6 @@ fn check_no_drop_result(source: &str, ast: &SourceFile) -> Vec<String> {
                 return Some(format!("line {line}: drop(...)"));
             }
             None
-        })
-        .collect()
-}
-
-fn check_no_empty_err_match(source: &str, ast: &SourceFile) -> Vec<String> {
-    ast.syntax()
-        .descendants()
-        .filter_map(|node| {
-            if node.kind() != SyntaxKind::MATCH_ARM {
-                return None;
-            }
-            let arm = ast::MatchArm::cast(node.clone())?;
-            let pat = arm.pat()?;
-            let pat_str = pat.to_string();
-            if !pat_str.starts_with("Err") {
-                return None;
-            }
-            let expr = arm.expr()?;
-            let expr_str = expr.to_string();
-            if expr_str != "{}" && expr_str != "()" {
-                return None;
-            }
-            let line = line_number(source, node.text_range().start().into());
-            Some(format!("line {line}: Err(_) => {{}}"))
         })
         .collect()
 }
@@ -1003,30 +969,6 @@ fn check_no_while_let_ok(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_wildcard_err(source: &str, ast: &SourceFile) -> Vec<String> {
-    ast.syntax()
-        .descendants()
-        .filter_map(|node| {
-            if node.kind() != SyntaxKind::TUPLE_STRUCT_PAT {
-                return None;
-            }
-            let pat = ast::TupleStructPat::cast(node)?;
-            let path = pat.path()?;
-            if path.to_string() != "Err" {
-                return None;
-            }
-            let has_wildcard = pat
-                .fields()
-                .any(|field| matches!(field, ast::Pat::WildcardPat(_)));
-            if !has_wildcard {
-                return None;
-            }
-            let line = line_number(source, pat.syntax().text_range().start().into());
-            Some(format!("line {line}: Err(_)"))
-        })
-        .collect()
-}
-
 fn extract_err_binding(pat: &ast::Pat) -> Option<String> {
     let ast::Pat::TupleStructPat(tuple_pat) = pat else {
         return None;
@@ -1385,20 +1327,6 @@ mod tests {
     }
 
     #[test]
-    fn no_empty_err_match_detects_violation() {
-        let (source, ast) = parse_fixture("no-empty-err-match");
-        let errors = check_no_empty_err_match(&source, &ast);
-        assert_eq!(errors.len(), 1);
-    }
-
-    #[test]
-    fn no_empty_err_match_allows_valid() {
-        let (source, ast) = parse_fixture("valid-no-empty-err-match");
-        let errors = check_no_empty_err_match(&source, &ast);
-        assert!(errors.is_empty());
-    }
-
-    #[test]
     fn no_expect_attr_detects_violation() {
         let (source, ast) = parse_fixture("no-expect-attr");
         let errors = check_no_expect_attr(&source, &ast);
@@ -1717,20 +1645,6 @@ mod tests {
     fn no_while_let_ok_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-while-let-ok");
         let errors = check_no_while_let_ok(&source, &ast);
-        assert!(errors.is_empty());
-    }
-
-    #[test]
-    fn no_wildcard_err_detects_violation() {
-        let (source, ast) = parse_fixture("no-wildcard-err");
-        let errors = check_no_wildcard_err(&source, &ast);
-        assert_eq!(errors.len(), 1);
-    }
-
-    #[test]
-    fn no_wildcard_err_allows_valid() {
-        let (source, ast) = parse_fixture("valid-no-wildcard-err");
-        let errors = check_no_wildcard_err(&source, &ast);
         assert!(errors.is_empty());
     }
 
