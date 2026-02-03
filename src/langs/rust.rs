@@ -174,6 +174,11 @@ const RULES: &[Rule] = &[
         hint: Some("capture the error value instead of discarding it with Err(_)"),
         name: "no-wildcard-err",
     },
+    Rule {
+        check: check_no_swallowed_err,
+        hint: Some("Err matched but not returned - error is being swallowed"),
+        name: "no-swallowed-err",
+    },
 ];
 
 struct CargoTomlRule {
@@ -992,6 +997,40 @@ fn check_no_wildcard_err(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
+fn extract_err_binding(pat: &ast::Pat) -> Option<String> {
+    let ast::Pat::TupleStructPat(tuple_pat) = pat else {
+        return None;
+    };
+    if tuple_pat.path()?.to_string() != "Err" {
+        return None;
+    }
+    let field = tuple_pat.fields().next()?;
+    Some(field.to_string())
+}
+
+fn check_no_swallowed_err(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::MATCH_ARM {
+                return None;
+            }
+            let arm = ast::MatchArm::cast(node.clone())?;
+            let pat = arm.pat()?;
+            let binding = extract_err_binding(&pat)?;
+            let expr = arm.expr()?;
+            let expr_str = expr.to_string();
+            let is_discarded = binding.starts_with('_');
+            let is_unused = !expr_str.contains(&binding);
+            if !is_discarded && !is_unused {
+                return None;
+            }
+            let line = line_number(source, node.text_range().start().into());
+            Some(format!("line {line}: Err({binding}) not used"))
+        })
+        .collect()
+}
+
 const PRINT_MACROS: &[&str] = &["println", "print", "eprintln", "eprint"];
 
 fn is_inside_main(node: &ra_ap_syntax::SyntaxNode) -> bool {
@@ -1641,6 +1680,20 @@ mod tests {
     fn no_wildcard_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-wildcard-err");
         let errors = check_no_wildcard_err(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_swallowed_err_detects_violation() {
+        let (source, ast) = parse_fixture("no-swallowed-err");
+        let errors = check_no_swallowed_err(&source, &ast);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_swallowed_err_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-swallowed-err");
+        let errors = check_no_swallowed_err(&source, &ast);
         assert!(errors.is_empty());
     }
 
