@@ -16,7 +16,7 @@ src/
 ├── files.rs         # Glob-based file discovery
 ├── output.rs        # Format violations, generate config
 └── langs/
-    ├── gleam.rs     # Gleam rules (toml parser)
+    ├── gleam.rs     # Gleam rules (tree-sitter + toml parser)
     ├── js.rs        # JS/TS rules (oxc parser)
     ├── rust.rs      # Rust rules (ra_ap_syntax parser)
     └── tofu.rs      # OpenTofu rules (hcl-rs parser)

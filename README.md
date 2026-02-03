@@ -41,6 +41,7 @@ slop-detector --create-config-for-violations
 
 ### Gleam
 - `exact-versions` - Pin dependency versions in gleam.toml
+- `no-ignored-error` - Handle or propagate errors instead of ignoring
 - `no-unwrap` - Use pattern matching or let assert instead
 
 ### JS/TS
@@ -59,13 +60,15 @@ slop-detector --create-config-for-violations
 - `no-cfg-attr-suppress` - No cfg_attr with allow/expect
 - `no-discard-result` - Handle Result instead of `let _ =`
 - `no-drop-result` - Handle Result instead of dropping
-- `no-empty-err-match` - Handle error case in match arms
 - `no-expect-attr` - Refactor instead of suppressing lints
 - `no-expect-outside-tests` - Use ? or match, expect only in tests
 - `no-if-let-ok-without-else` - Add else to handle error case
 - `no-impl` - Use free functions
 - `no-is-ok-is-err` - Use the value instead of just checking
+- `no-let-ok-else-continue` - Don't silently skip errors in loops
+- `no-map-discard` - Don't hide values with .map(|_| ...)
 - `no-map-err-discard` - Preserve original error in map_err
+- `no-map-or-else` - Use match or .ok_or_else() instead
 - `no-mem-forget` - Do not leak resources
 - `no-ok-and-propagate` - Use ? on Result directly, not .ok()?
 - `no-ok-method` - Handle error explicitly, don't discard with .ok()
@@ -73,6 +76,7 @@ slop-detector --create-config-for-violations
 - `no-return-ok` - Don't hide errors with return Ok(())
 - `no-spawn` - Use .output() or .status() instead of .spawn()
 - `no-stderr-null` - Don't silence stderr with Stdio::null()
+- `no-swallowed-err` - Don't ignore Err in match arms
 - `no-trait-impl` - Avoid trait implementations
 - `no-unit-error` - Use meaningful error types, not ()
 - `no-unwrap-err` - Handle Ok case explicitly
@@ -81,7 +85,9 @@ slop-detector --create-config-for-violations
 - `no-unwrap-or-else` - Avoid silent defaults
 - `no-unwrap-unchecked` - Use safe unwrap methods
 - `no-while-let-ok` - Handle errors explicitly, don't silently stop
-- `no-wildcard-err` - Capture error value, don't discard with Err(_)
+- `pinned-versions` - Pin dependency versions in Cargo.toml
+- `rust-version-sync` - Keep Rust version in sync across config files
+- `thiserror-unused-fields` - Use all error fields in #[error("...")]
 
 ### OpenTofu
 - `banned-data-source` - No external data source
