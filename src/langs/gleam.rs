@@ -163,18 +163,47 @@ fn check_no_ignored_error(source: &str, tree: &Tree) -> Vec<String> {
     errors
 }
 
-const UNWRAP_PATTERN: &str = ".unwrap\x28";
+fn find_function_calls<'tree>(node: Node<'tree>, calls: &mut Vec<Node<'tree>>) {
+    if node.kind() == "function_call" {
+        calls.push(node);
+    }
+    for child in node.children(&mut node.walk()) {
+        find_function_calls(child, calls);
+    }
+}
 
-fn check_no_unwrap(source: &str, _tree: &Tree) -> Vec<String> {
-    source
-        .match_indices(UNWRAP_PATTERN)
-        .map(|(pos, _)| {
-            let line = source.get(..pos).map_or(1, |slice| {
-                slice.chars().filter(|ch| *ch == '\n').count() + 1
-            });
-            format!("line {line}: {UNWRAP_PATTERN})")
-        })
-        .collect()
+fn is_unwrap_call(node: Node<'_>, source: &[u8]) -> bool {
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "field_access" {
+            for inner in child.children(&mut child.walk()) {
+                if inner.kind() == "label"
+                    && let Ok(text) = inner.utf8_text(source)
+                {
+                    return text == "unwrap";
+                }
+            }
+        }
+    }
+    false
+}
+
+const UNWRAP_MSG: &str = ".unwrap\x28)";
+
+fn check_no_unwrap(source: &str, tree: &Tree) -> Vec<String> {
+    let mut errors = Vec::new();
+    let source_bytes = source.as_bytes();
+
+    let mut calls = Vec::new();
+    find_function_calls(tree.root_node(), &mut calls);
+
+    for call in calls {
+        if is_unwrap_call(call, source_bytes) {
+            let line = call.start_position().row + 1;
+            errors.push(format!("line {line}: {UNWRAP_MSG}"));
+        }
+    }
+
+    errors
 }
 
 fn is_unpinned_version(version: &str) -> bool {
