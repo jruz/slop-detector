@@ -33,3 +33,10 @@ fn collect_errors() {
         Err(err) => errors.push(err),
     }
 }
+
+fn expect_on_error() -> i32 {
+    match fallible() {
+        Ok(v) => v,
+        Err(_) => None.expect("unexpected error"),
+    }
+}

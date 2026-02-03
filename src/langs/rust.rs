@@ -63,6 +63,11 @@ const RULES: &[Rule] = &[
         name: "no-if-let-ok-without-else",
     },
     Rule {
+        check: check_no_let_ok_else_continue,
+        hint: Some("silently skips errors - return Result from function and use ? instead"),
+        name: "no-let-ok-else-continue",
+    },
+    Rule {
         check: check_no_impl,
         hint: Some("use free functions, impl is banned"),
         name: "no-impl",
@@ -592,6 +597,31 @@ fn check_no_if_let_ok_without_else(source: &str, ast: &SourceFile) -> Vec<String
         .collect()
 }
 
+fn check_no_let_ok_else_continue(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::LET_STMT {
+                return None;
+            }
+            let let_stmt = ast::LetStmt::cast(node.clone())?;
+            let pat = let_stmt.pat()?;
+            let pat_str = pat.to_string();
+            if !pat_str.starts_with("Ok(") {
+                return None;
+            }
+            let let_else = let_stmt.let_else()?;
+            let block = let_else.block_expr()?;
+            let block_str = block.to_string();
+            if !block_str.contains("continue") {
+                return None;
+            }
+            let line = line_number(source, node.text_range().start().into());
+            Some(format!("line {line}: let Ok(...) else {{ continue }}"))
+        })
+        .collect()
+}
+
 fn check_no_impl(source: &str, ast: &SourceFile) -> Vec<String> {
     ast.syntax()
         .descendants()
@@ -1008,6 +1038,10 @@ fn extract_err_binding(pat: &ast::Pat) -> Option<String> {
     Some(field.to_string())
 }
 
+fn has_expect(expr_str: &str) -> bool {
+    expr_str.contains(".expect(")
+}
+
 fn check_no_swallowed_err(source: &str, ast: &SourceFile) -> Vec<String> {
     ast.syntax()
         .descendants()
@@ -1020,6 +1054,9 @@ fn check_no_swallowed_err(source: &str, ast: &SourceFile) -> Vec<String> {
             let binding = extract_err_binding(&pat)?;
             let expr = arm.expr()?;
             let expr_str = expr.to_string();
+            if has_expect(&expr_str) {
+                return None;
+            }
             let is_discarded = binding.starts_with('_');
             let is_unused = !expr_str.contains(&binding);
             if !is_discarded && !is_unused {
@@ -1400,6 +1437,20 @@ mod tests {
     fn no_if_let_ok_without_else_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-if-let-ok-without-else");
         let errors = check_no_if_let_ok_without_else(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_let_ok_else_continue_detects_violation() {
+        let (source, ast) = parse_fixture("no-let-ok-else-continue");
+        let errors = check_no_let_ok_else_continue(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_let_ok_else_continue_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-let-ok-else-continue");
+        let errors = check_no_let_ok_else_continue(&source, &ast);
         assert!(errors.is_empty());
     }
 
