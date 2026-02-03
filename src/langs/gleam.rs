@@ -69,48 +69,36 @@ fn get_constructor_name<'tree>(
     Ok(None)
 }
 
-fn pattern_matches_error(pattern_node: Node<'_>, source: &[u8]) -> bool {
+fn extract_error_binding<'tree>(
+    pattern_node: Node<'tree>,
+    source: &'tree [u8],
+) -> Result<Option<&'tree str>, std::str::Utf8Error> {
     for child in pattern_node.children(&mut pattern_node.walk()) {
         if child.kind() == "case_clause_pattern" {
             for inner in child.children(&mut child.walk()) {
                 if inner.kind() == "record_pattern"
-                    && let Ok(Some(name)) = get_constructor_name(inner, source)
-                    && name == "Error"
+                    && get_constructor_name(inner, source)? == Some("Error")
                 {
-                    return true;
+                    for arg_container in inner.children(&mut inner.walk()) {
+                        if arg_container.kind() == "record_pattern_arguments" {
+                            for arg in arg_container.children(&mut arg_container.walk()) {
+                                if arg.kind() == "record_pattern_argument" {
+                                    for binding in arg.children(&mut arg.walk()) {
+                                        if binding.kind() == "discard"
+                                            || binding.kind() == "identifier"
+                                        {
+                                            return Ok(Some(binding.utf8_text(source)?));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
-    false
-}
-
-fn get_last_expression(node: Node<'_>) -> Option<Node<'_>> {
-    if node.kind() == "block" {
-        let mut last_expr = None;
-        for child in node.children(&mut node.walk()) {
-            if child.kind() != "{" && child.kind() != "}" {
-                last_expr = Some(child);
-            }
-        }
-        return last_expr;
-    }
-    Some(node)
-}
-
-fn expression_returns_error(expr_node: Node<'_>, source: &[u8]) -> bool {
-    let actual_expr = get_last_expression(expr_node);
-    let Some(expr) = actual_expr else {
-        return false;
-    };
-
-    if expr.kind() == "record"
-        && let Ok(Some(name)) = get_constructor_name(expr, source)
-    {
-        return name == "Error";
-    }
-
-    false
+    Ok(None)
 }
 
 fn find_case_clauses<'tree>(node: Node<'tree>, clauses: &mut Vec<Node<'tree>>) {
@@ -122,42 +110,63 @@ fn find_case_clauses<'tree>(node: Node<'tree>, clauses: &mut Vec<Node<'tree>>) {
     }
 }
 
-fn check_no_ignored_error(source: &str, tree: &Tree) -> Vec<String> {
-    let mut errors = Vec::new();
-    let source_bytes = source.as_bytes();
+fn check_clause_for_ignored_error(
+    clause: Node<'_>,
+    source_bytes: &[u8],
+) -> Result<Option<String>, std::str::Utf8Error> {
+    let mut patterns_node = None;
+    let mut body_node = None;
+    let mut found_arrow = false;
 
-    let mut clauses = Vec::new();
-    find_case_clauses(tree.root_node(), &mut clauses);
-
-    for clause in clauses {
-        let mut patterns_node = None;
-        let mut body_node = None;
-        let mut found_arrow = false;
-
-        for child in clause.children(&mut clause.walk()) {
-            match child.kind() {
-                "case_clause_patterns" => patterns_node = Some(child),
-                "->" => found_arrow = true,
-                _ if found_arrow && body_node.is_none() => body_node = Some(child),
-                _ => {}
-            }
-        }
-
-        let Some(patterns) = patterns_node else {
-            continue;
-        };
-        let Some(body) = body_node else {
-            continue;
-        };
-
-        if pattern_matches_error(patterns, source_bytes)
-            && !expression_returns_error(body, source_bytes)
-        {
-            let line = clause.start_position().row + 1;
-            errors.push(format!("line {line}: Error matched but not returned"));
+    for child in clause.children(&mut clause.walk()) {
+        match child.kind() {
+            "case_clause_patterns" => patterns_node = Some(child),
+            "->" => found_arrow = true,
+            _ if found_arrow && body_node.is_none() => body_node = Some(child),
+            _ => {}
         }
     }
 
+    let (Some(patterns), Some(body)) = (patterns_node, body_node) else {
+        return Ok(None);
+    };
+
+    let Some(binding) = extract_error_binding(patterns, source_bytes)? else {
+        return Ok(None);
+    };
+
+    let body_str = body.utf8_text(source_bytes)?;
+
+    if body_str.contains("panic as") {
+        return Ok(None);
+    }
+
+    let is_discarded = binding.starts_with('_');
+    let is_unused = !body_str.contains(binding);
+
+    if is_discarded || is_unused {
+        let line = clause.start_position().row + 1;
+        return Ok(Some(format!("line {line}: Error({binding}) not used")));
+    }
+
+    Ok(None)
+}
+
+fn check_no_ignored_error(source: &str, tree: &Tree) -> Vec<String> {
+    let source_bytes = source.as_bytes();
+    let mut clauses = Vec::new();
+    find_case_clauses(tree.root_node(), &mut clauses);
+
+    let mut errors = Vec::new();
+    for clause in clauses {
+        match check_clause_for_ignored_error(clause, source_bytes) {
+            Ok(Some(error)) => errors.push(error),
+            Ok(None) => {}
+            Err(utf8_err) => {
+                errors.push(format!("UTF-8 error: {utf8_err}"));
+            }
+        }
+    }
     errors
 }
 
@@ -409,7 +418,7 @@ mod tests {
     fn no_ignored_error_detects_violation() {
         let (source, tree) = parse_fixture("no-ignored-error.gleam");
         let errors = check_no_ignored_error(&source, &tree);
-        assert_eq!(errors.len(), 4);
+        assert_eq!(errors.len(), 3);
     }
 
     #[test]
