@@ -51,24 +51,22 @@ struct ParsedGleamToml {
     toml: toml::Value,
 }
 
-fn create_parser() -> Option<Parser> {
+fn create_parser() -> Result<Parser, tree_sitter::LanguageError> {
     let mut parser = Parser::new();
-    match parser.set_language(&tree_sitter_gleam::LANGUAGE.into()) {
-        Ok(()) => Some(parser),
-        Err(_err) => None,
-    }
+    parser.set_language(&tree_sitter_gleam::LANGUAGE.into())?;
+    Ok(parser)
 }
 
-fn get_constructor_name<'tree>(node: Node<'tree>, source: &'tree [u8]) -> Option<&'tree str> {
+fn get_constructor_name<'tree>(
+    node: Node<'tree>,
+    source: &'tree [u8],
+) -> Result<Option<&'tree str>, std::str::Utf8Error> {
     for child in node.children(&mut node.walk()) {
         if child.kind() == "constructor_name" {
-            match child.utf8_text(source) {
-                Ok(text) => return Some(text),
-                Err(_err) => return None,
-            }
+            return Ok(Some(child.utf8_text(source)?));
         }
     }
-    None
+    Ok(None)
 }
 
 fn pattern_matches_error(pattern_node: Node<'_>, source: &[u8]) -> bool {
@@ -76,7 +74,7 @@ fn pattern_matches_error(pattern_node: Node<'_>, source: &[u8]) -> bool {
         if child.kind() == "case_clause_pattern" {
             for inner in child.children(&mut child.walk()) {
                 if inner.kind() == "record_pattern"
-                    && let Some(name) = get_constructor_name(inner, source)
+                    && let Ok(Some(name)) = get_constructor_name(inner, source)
                     && name == "Error"
                 {
                     return true;
@@ -107,7 +105,7 @@ fn expression_returns_error(expr_node: Node<'_>, source: &[u8]) -> bool {
     };
 
     if expr.kind() == "record"
-        && let Some(name) = get_constructor_name(expr, source)
+        && let Ok(Some(name)) = get_constructor_name(expr, source)
     {
         return name == "Error";
     }
@@ -351,14 +349,15 @@ pub fn check() -> CheckResult {
     let (gleam_toml_paths, toml_glob_errors) = find(GLEAM_TOML_PATTERNS, EXCLUDES);
     errors.extend(toml_glob_errors);
 
-    let (parsed_gleam, gleam_errors) = if let Some(mut parser) = create_parser() {
-        parse_gleam(gleam_paths, &mut parser)
-    } else {
-        errors.push(AppError::Parse {
-            file: "gleam".to_string(),
-            message: "failed to load gleam grammar".to_string(),
-        });
-        (Vec::new(), Vec::new())
+    let (parsed_gleam, gleam_errors) = match create_parser() {
+        Ok(mut parser) => parse_gleam(gleam_paths, &mut parser),
+        Err(err) => {
+            errors.push(AppError::Parse {
+                file: "gleam".to_string(),
+                message: err.to_string(),
+            });
+            (Vec::new(), Vec::new())
+        }
     };
     let (parsed_tomls, toml_errors) = parse_gleam_tomls(gleam_toml_paths);
     errors.extend(gleam_errors);
