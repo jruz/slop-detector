@@ -1,5 +1,7 @@
 use std::fs;
 
+use tree_sitter::{Node, Parser, Tree};
+
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
@@ -20,7 +22,7 @@ const GLEAM_TOML_RULES: &[GleamTomlRule] = &[GleamTomlRule {
 }];
 
 struct GleamRule {
-    check: fn(source: &str) -> Vec<String>,
+    check: fn(source: &str, tree: &Tree) -> Vec<String>,
     hint: Option<&'static str>,
     name: &'static str,
 }
@@ -41,41 +43,138 @@ const GLEAM_RULES: &[GleamRule] = &[
 struct ParsedGleam {
     path: String,
     source: String,
-}
-
-fn line_number(source: &str, byte_offset: usize) -> usize {
-    source.get(..byte_offset).map_or(1, |slice| {
-        slice.chars().filter(|ch| *ch == '\n').count() + 1
-    })
-}
-
-const IGNORED_ERROR_PATTERN: &str = "Error(_)";
-
-fn check_no_ignored_error(source: &str) -> Vec<String> {
-    source
-        .match_indices(IGNORED_ERROR_PATTERN)
-        .map(|(pos, _)| {
-            let line = line_number(source, pos);
-            format!("line {line}: {IGNORED_ERROR_PATTERN}")
-        })
-        .collect()
-}
-
-const UNWRAP_PATTERN: &str = ".unwrap\x28";
-
-fn check_no_unwrap(source: &str) -> Vec<String> {
-    source
-        .match_indices(UNWRAP_PATTERN)
-        .map(|(pos, _)| {
-            let line = line_number(source, pos);
-            format!("line {line}: {UNWRAP_PATTERN})")
-        })
-        .collect()
+    tree: Tree,
 }
 
 struct ParsedGleamToml {
     path: String,
     toml: toml::Value,
+}
+
+fn create_parser() -> Option<Parser> {
+    let mut parser = Parser::new();
+    match parser.set_language(&tree_sitter_gleam::LANGUAGE.into()) {
+        Ok(()) => Some(parser),
+        Err(_err) => None,
+    }
+}
+
+fn get_constructor_name<'tree>(node: Node<'tree>, source: &'tree [u8]) -> Option<&'tree str> {
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "constructor_name" {
+            match child.utf8_text(source) {
+                Ok(text) => return Some(text),
+                Err(_err) => return None,
+            }
+        }
+    }
+    None
+}
+
+fn pattern_matches_error(pattern_node: Node<'_>, source: &[u8]) -> bool {
+    for child in pattern_node.children(&mut pattern_node.walk()) {
+        if child.kind() == "case_clause_pattern" {
+            for inner in child.children(&mut child.walk()) {
+                if inner.kind() == "record_pattern"
+                    && let Some(name) = get_constructor_name(inner, source)
+                    && name == "Error"
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn get_last_expression(node: Node<'_>) -> Option<Node<'_>> {
+    if node.kind() == "block" {
+        let mut last_expr = None;
+        for child in node.children(&mut node.walk()) {
+            if child.kind() != "{" && child.kind() != "}" {
+                last_expr = Some(child);
+            }
+        }
+        return last_expr;
+    }
+    Some(node)
+}
+
+fn expression_returns_error(expr_node: Node<'_>, source: &[u8]) -> bool {
+    let actual_expr = get_last_expression(expr_node);
+    let Some(expr) = actual_expr else {
+        return false;
+    };
+
+    if expr.kind() == "record"
+        && let Some(name) = get_constructor_name(expr, source)
+    {
+        return name == "Error";
+    }
+
+    false
+}
+
+fn find_case_clauses<'tree>(node: Node<'tree>, clauses: &mut Vec<Node<'tree>>) {
+    if node.kind() == "case_clause" {
+        clauses.push(node);
+    }
+    for child in node.children(&mut node.walk()) {
+        find_case_clauses(child, clauses);
+    }
+}
+
+fn check_no_ignored_error(source: &str, tree: &Tree) -> Vec<String> {
+    let mut errors = Vec::new();
+    let source_bytes = source.as_bytes();
+
+    let mut clauses = Vec::new();
+    find_case_clauses(tree.root_node(), &mut clauses);
+
+    for clause in clauses {
+        let mut patterns_node = None;
+        let mut body_node = None;
+        let mut found_arrow = false;
+
+        for child in clause.children(&mut clause.walk()) {
+            match child.kind() {
+                "case_clause_patterns" => patterns_node = Some(child),
+                "->" => found_arrow = true,
+                _ if found_arrow && body_node.is_none() => body_node = Some(child),
+                _ => {}
+            }
+        }
+
+        let Some(patterns) = patterns_node else {
+            continue;
+        };
+        let Some(body) = body_node else {
+            continue;
+        };
+
+        if pattern_matches_error(patterns, source_bytes)
+            && !expression_returns_error(body, source_bytes)
+        {
+            let line = clause.start_position().row + 1;
+            errors.push(format!("line {line}: Error matched but not returned"));
+        }
+    }
+
+    errors
+}
+
+const UNWRAP_PATTERN: &str = ".unwrap\x28";
+
+fn check_no_unwrap(source: &str, _tree: &Tree) -> Vec<String> {
+    source
+        .match_indices(UNWRAP_PATTERN)
+        .map(|(pos, _)| {
+            let line = source.get(..pos).map_or(1, |slice| {
+                slice.chars().filter(|ch| *ch == '\n').count() + 1
+            });
+            format!("line {line}: {UNWRAP_PATTERN})")
+        })
+        .collect()
 }
 
 fn is_unpinned_version(version: &str) -> bool {
@@ -175,13 +274,19 @@ fn run_gleam_toml_rules(files: &[ParsedGleamToml], rules: &[GleamTomlRule]) -> V
         .collect()
 }
 
-fn parse_gleam(paths: Vec<String>) -> (Vec<ParsedGleam>, Vec<AppError>) {
+fn parse_gleam(paths: Vec<String>, parser: &mut Parser) -> (Vec<ParsedGleam>, Vec<AppError>) {
     let mut parsed = Vec::new();
     let mut errors = Vec::new();
 
     for path in paths {
         match fs::read_to_string(&path) {
-            Ok(source) => parsed.push(ParsedGleam { path, source }),
+            Ok(source) => match parser.parse(&source, None) {
+                Some(tree) => parsed.push(ParsedGleam { path, source, tree }),
+                None => errors.push(AppError::Parse {
+                    file: path,
+                    message: "failed to parse".to_string(),
+                }),
+            },
             Err(err) => errors.push(AppError::Read {
                 file: path,
                 message: err.to_string(),
@@ -197,7 +302,7 @@ fn run_gleam_rules(files: &[ParsedGleam], rules: &[GleamRule]) -> Vec<Violation>
         .iter()
         .flat_map(|file| {
             rules.iter().filter_map(|rule| {
-                let errors = (rule.check)(&file.source);
+                let errors = (rule.check)(&file.source, &file.tree);
                 if errors.is_empty() {
                     return None;
                 }
@@ -217,7 +322,15 @@ pub fn check() -> CheckResult {
     let (gleam_toml_paths, toml_glob_errors) = find(GLEAM_TOML_PATTERNS, EXCLUDES);
     errors.extend(toml_glob_errors);
 
-    let (parsed_gleam, gleam_errors) = parse_gleam(gleam_paths);
+    let (parsed_gleam, gleam_errors) = if let Some(mut parser) = create_parser() {
+        parse_gleam(gleam_paths, &mut parser)
+    } else {
+        errors.push(AppError::Parse {
+            file: "gleam".to_string(),
+            message: "failed to load gleam grammar".to_string(),
+        });
+        (Vec::new(), Vec::new())
+    };
     let (parsed_tomls, toml_errors) = parse_gleam_tomls(gleam_toml_paths);
     errors.extend(gleam_errors);
     errors.extend(toml_errors);
@@ -241,6 +354,13 @@ mod tests {
         fs::read_to_string(&path).expect("fixture should exist")
     }
 
+    fn parse_fixture(name: &str) -> (String, Tree) {
+        let source = read_fixture(name);
+        let mut parser = create_parser().expect("parser should load");
+        let tree = parser.parse(&source, None).expect("should parse");
+        (source, tree)
+    }
+
     #[test]
     fn exact_versions_detects_violation() {
         let content = read_fixture("exact-versions.toml");
@@ -259,29 +379,29 @@ mod tests {
 
     #[test]
     fn no_ignored_error_detects_violation() {
-        let source = read_fixture("no-ignored-error.gleam");
-        let errors = check_no_ignored_error(&source);
-        assert_eq!(errors.len(), 1);
+        let (source, tree) = parse_fixture("no-ignored-error.gleam");
+        let errors = check_no_ignored_error(&source, &tree);
+        assert_eq!(errors.len(), 4);
     }
 
     #[test]
     fn no_ignored_error_allows_valid() {
-        let source = read_fixture("valid-no-ignored-error.gleam");
-        let errors = check_no_ignored_error(&source);
+        let (source, tree) = parse_fixture("valid-no-ignored-error.gleam");
+        let errors = check_no_ignored_error(&source, &tree);
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_unwrap_detects_violation() {
-        let source = read_fixture("no-unwrap.gleam");
-        let errors = check_no_unwrap(&source);
+        let (source, tree) = parse_fixture("no-unwrap.gleam");
+        let errors = check_no_unwrap(&source, &tree);
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_unwrap_allows_valid() {
-        let source = read_fixture("valid-no-unwrap.gleam");
-        let errors = check_no_unwrap(&source);
+        let (source, tree) = parse_fixture("valid-no-unwrap.gleam");
+        let errors = check_no_unwrap(&source, &tree);
         assert!(errors.is_empty());
     }
 }
