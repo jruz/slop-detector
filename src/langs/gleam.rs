@@ -219,6 +219,7 @@ fn check_no_discarded_error_fields(source: &str, tree: &Tree) -> Vec<String> {
     }
     errors
 }
+
 fn check_clause_for_ignored_error(
     clause: Node<'_>,
     source_bytes: &[u8],
@@ -434,9 +435,11 @@ fn check_nested_case(
 fn check_no_nested_result(source: &str, tree: &Tree) -> Vec<String> {
     check_nested_case(source, tree, "Ok", "Error")
 }
+
 fn check_no_nested_option(source: &str, tree: &Tree) -> Vec<String> {
     check_nested_case(source, tree, "Some", "None")
 }
+
 fn case_is_bool_match(node: Node<'_>, source: &[u8]) -> bool {
     case_has_pattern(node, source, "True") && case_has_pattern(node, source, "False")
 }
@@ -507,6 +510,7 @@ fn check_no_nested_if(source: &str, tree: &Tree) -> Vec<String> {
 
     errors
 }
+
 fn is_unwrap_call(node: Node<'_>, source: &[u8]) -> bool {
     for child in node.children(&mut node.walk()) {
         if child.kind() == "field_access" {
@@ -737,6 +741,7 @@ mod tests {
         let errors = check_no_discarded_error_fields(&source, &tree);
         assert!(errors.is_empty());
     }
+
     #[test]
     fn exact_versions_detects_violation() {
         let content = read_fixture("exact-versions.toml");
@@ -780,6 +785,7 @@ mod tests {
         let errors = check_no_nested_if(&source, &tree);
         assert!(errors.is_empty());
     }
+
     #[test]
     fn no_nested_option_detects_violation() {
         let (source, tree) = parse_fixture("no-nested-option.gleam");
@@ -793,6 +799,7 @@ mod tests {
         let errors = check_no_nested_option(&source, &tree);
         assert!(errors.is_empty());
     }
+
     #[test]
     fn no_nested_result_detects_violation() {
         let (source, tree) = parse_fixture("no-nested-result.gleam");
@@ -806,6 +813,7 @@ mod tests {
         let errors = check_no_nested_result(&source, &tree);
         assert!(errors.is_empty());
     }
+
     #[test]
     fn no_unwrap_detects_violation() {
         let (source, tree) = parse_fixture("no-unwrap.gleam");
