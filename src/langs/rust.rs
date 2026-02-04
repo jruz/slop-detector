@@ -6,9 +6,9 @@ use ra_ap_syntax::{AstNode as _, SourceFile, SyntaxKind, ast};
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
-const EXCLUDES: &[&str] = &["target", ".git", "fixtures"];
-const PATTERNS: &[&str] = &["**/*.rs"];
-const CARGO_TOML_PATTERNS: &[&str] = &["**/Cargo.toml"];
+const EXCLUDES: &[&str] = &["fixtures"];
+const PATTERNS: &[&str] = &["*.rs"];
+const CARGO_TOML_PATTERNS: &[&str] = &["Cargo.toml"];
 
 struct Rule {
     check: fn(source: &str, ast: &SourceFile) -> Vec<String>,
@@ -1099,18 +1099,16 @@ fn line_number(source: &str, offset: usize) -> usize {
 }
 
 fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
-    let mut files = Vec::new();
-    let mut errors = Vec::new();
-    for pattern in patterns {
-        match find_files(pattern, excludes) {
-            Ok(found) => files.extend(found),
-            Err(err) => errors.push(AppError::Glob {
-                pattern: (*pattern).to_string(),
+    match find_files(patterns, excludes) {
+        Ok(found) => (found, vec![]),
+        Err(err) => (
+            vec![],
+            vec![AppError::Glob {
+                pattern: patterns.join(", "),
                 message: err.to_string(),
-            }),
-        }
+            }],
+        ),
     }
-    (files, errors)
 }
 
 fn parse(paths: Vec<String>) -> (Vec<ParsedFile>, Vec<AppError>) {

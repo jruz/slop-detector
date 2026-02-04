@@ -11,9 +11,9 @@ use oxc_ast_visit::{Visit, walk};
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
-const EXCLUDES: &[&str] = &["node_modules", ".git", "fixtures"];
-const PACKAGE_JSON_PATTERNS: &[&str] = &["**/package.json"];
-const TS_PATTERNS: &[&str] = &["**/*.ts", "**/*.tsx"];
+const EXCLUDES: &[&str] = &["fixtures"];
+const PACKAGE_JSON_PATTERNS: &[&str] = &["package.json"];
+const TS_PATTERNS: &[&str] = &["*.ts", "*.tsx"];
 
 struct PackageJsonRule {
     check: fn(pkg: &serde_json::Value) -> Vec<String>,
@@ -74,18 +74,16 @@ fn check_exact_versions(pkg: &serde_json::Value) -> Vec<String> {
 }
 
 fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
-    let mut files = Vec::new();
-    let mut errors = Vec::new();
-    for pattern in patterns {
-        match find_files(pattern, excludes) {
-            Ok(found) => files.extend(found),
-            Err(err) => errors.push(AppError::Glob {
-                pattern: (*pattern).to_string(),
+    match find_files(patterns, excludes) {
+        Ok(found) => (found, vec![]),
+        Err(err) => (
+            vec![],
+            vec![AppError::Glob {
+                pattern: patterns.join(", "),
                 message: err.to_string(),
-            }),
-        }
+            }],
+        ),
     }
-    (files, errors)
 }
 
 fn parse_package_jsons(paths: Vec<String>) -> (Vec<ParsedPackageJson>, Vec<AppError>) {

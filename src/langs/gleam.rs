@@ -5,9 +5,9 @@ use tree_sitter::{Node, Parser, Tree};
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
-const EXCLUDES: &[&str] = &[".git", "build", "fixtures"];
-const GLEAM_PATTERNS: &[&str] = &["**/*.gleam"];
-const GLEAM_TOML_PATTERNS: &[&str] = &["**/gleam.toml"];
+const EXCLUDES: &[&str] = &["build", "fixtures"];
+const GLEAM_PATTERNS: &[&str] = &["*.gleam"];
+const GLEAM_TOML_PATTERNS: &[&str] = &["gleam.toml"];
 
 struct GleamTomlRule {
     check: fn(toml: &toml::Value, path: &str) -> Vec<String>,
@@ -253,18 +253,16 @@ fn check_exact_versions(toml: &toml::Value, _path: &str) -> Vec<String> {
 }
 
 fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
-    let mut files = Vec::new();
-    let mut errors = Vec::new();
-    for pattern in patterns {
-        match find_files(pattern, excludes) {
-            Ok(found) => files.extend(found),
-            Err(err) => errors.push(AppError::Glob {
-                pattern: (*pattern).to_string(),
+    match find_files(patterns, excludes) {
+        Ok(found) => (found, vec![]),
+        Err(err) => (
+            vec![],
+            vec![AppError::Glob {
+                pattern: patterns.join(", "),
                 message: err.to_string(),
-            }),
-        }
+            }],
+        ),
     }
-    (files, errors)
 }
 
 fn parse_gleam_tomls(paths: Vec<String>) -> (Vec<ParsedGleamToml>, Vec<AppError>) {
