@@ -39,6 +39,11 @@ const GLEAM_RULES: &[GleamRule] = &[
         name: "no-ignored-error",
     },
     GleamRule {
+        check: check_no_nested_if,
+        hint: Some("use multi-pattern case or bool.guard to flatten"),
+        name: "no-nested-if",
+    },
+    GleamRule {
         check: check_no_nested_option,
         hint: Some("use `use value <- option.then(expr)` to flatten"),
         name: "no-nested-option",
@@ -432,6 +437,76 @@ fn check_no_nested_result(source: &str, tree: &Tree) -> Vec<String> {
 fn check_no_nested_option(source: &str, tree: &Tree) -> Vec<String> {
     check_nested_case(source, tree, "Some", "None")
 }
+fn case_is_bool_match(node: Node<'_>, source: &[u8]) -> bool {
+    case_has_pattern(node, source, "True") && case_has_pattern(node, source, "False")
+}
+
+fn find_bool_cases_in_body<'tree>(body: Node<'tree>, cases: &mut Vec<Node<'tree>>, source: &[u8]) {
+    if body.kind() == "case" && case_is_bool_match(body, source) {
+        cases.push(body);
+        return;
+    }
+    for child in body.children(&mut body.walk()) {
+        if child.kind() == "case" && case_is_bool_match(child, source) {
+            cases.push(child);
+        } else {
+            find_bool_cases_in_body(child, cases, source);
+        }
+    }
+}
+
+fn find_nested_bool_cases<'tree>(
+    case_node: Node<'tree>,
+    nested: &mut Vec<Node<'tree>>,
+    source: &[u8],
+) {
+    for child in case_node.children(&mut case_node.walk()) {
+        if child.kind() == "case_clauses" {
+            for clause in child.children(&mut child.walk()) {
+                if clause.kind() == "case_clause" {
+                    let mut found_arrow = false;
+                    for part in clause.children(&mut clause.walk()) {
+                        match (part.kind(), found_arrow) {
+                            ("->", _) => found_arrow = true,
+                            (_, true) => find_bool_cases_in_body(part, nested, source),
+                            (_, false) => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn check_no_nested_if(source: &str, tree: &Tree) -> Vec<String> {
+    let mut errors = Vec::new();
+    let source_bytes = source.as_bytes();
+
+    let mut cases = Vec::new();
+    find_case_expressions(tree.root_node(), &mut cases);
+
+    let top_level_bool_cases: Vec<_> = cases
+        .iter()
+        .filter(|case| case_is_bool_match(**case, source_bytes))
+        .collect();
+
+    for case in top_level_bool_cases {
+        let mut level1_nested = Vec::new();
+        find_nested_bool_cases(*case, &mut level1_nested, source_bytes);
+
+        for nested_case in level1_nested {
+            let mut level2_nested = Vec::new();
+            find_nested_bool_cases(nested_case, &mut level2_nested, source_bytes);
+
+            for deeply_nested in level2_nested {
+                let line = deeply_nested.start_position().row + 1;
+                errors.push(format!("line {line}: case on Bool nested 3 levels deep"));
+            }
+        }
+    }
+
+    errors
+}
 fn is_unwrap_call(node: Node<'_>, source: &[u8]) -> bool {
     for child in node.children(&mut node.walk()) {
         if child.kind() == "field_access" {
@@ -692,6 +767,19 @@ mod tests {
         assert!(errors.is_empty());
     }
 
+    #[test]
+    fn no_nested_if_detects_violation() {
+        let (source, tree) = parse_fixture("no-nested-if.gleam");
+        let errors = check_no_nested_if(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_nested_if_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-nested-if.gleam");
+        let errors = check_no_nested_if(&source, &tree);
+        assert!(errors.is_empty());
+    }
     #[test]
     fn no_nested_option_detects_violation() {
         let (source, tree) = parse_fixture("no-nested-option.gleam");
