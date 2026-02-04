@@ -29,6 +29,11 @@ struct GleamRule {
 
 const GLEAM_RULES: &[GleamRule] = &[
     GleamRule {
+        check: check_no_discarded_error_fields,
+        hint: Some("log or propagate error details instead of discarding them"),
+        name: "no-discarded-error-fields",
+    },
+    GleamRule {
         check: check_no_ignored_error,
         hint: Some("handle or propagate the error instead of ignoring it"),
         name: "no-ignored-error",
@@ -110,6 +115,95 @@ fn find_case_clauses<'tree>(node: Node<'tree>, clauses: &mut Vec<Node<'tree>>) {
     }
 }
 
+fn has_all_discarded_fields(node: Node<'_>) -> bool {
+    let mut has_arguments = false;
+    let mut all_discards = true;
+
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "record_pattern_arguments" {
+            for arg in child.children(&mut child.walk()) {
+                if arg.kind() == "record_pattern_argument" {
+                    has_arguments = true;
+                    let mut is_discard = false;
+                    for inner in arg.children(&mut arg.walk()) {
+                        if inner.kind() == "discard" {
+                            is_discard = true;
+                            break;
+                        }
+                    }
+                    if !is_discard {
+                        all_discards = false;
+                    }
+                }
+            }
+        }
+    }
+
+    has_arguments && all_discards
+}
+
+fn find_discarded_error_fields(
+    clause: Node<'_>,
+    source: &[u8],
+) -> Result<Vec<(usize, String)>, std::str::Utf8Error> {
+    let mut results = Vec::new();
+
+    for child in clause.children(&mut clause.walk()) {
+        if child.kind() == "case_clause_patterns" {
+            for pattern in child.children(&mut child.walk()) {
+                if pattern.kind() == "case_clause_pattern" {
+                    for inner in pattern.children(&mut pattern.walk()) {
+                        if inner.kind() == "record_pattern"
+                            && get_constructor_name(inner, source)? == Some("Error")
+                        {
+                            for arg_container in inner.children(&mut inner.walk()) {
+                                if arg_container.kind() == "record_pattern_arguments" {
+                                    for arg in arg_container.children(&mut arg_container.walk()) {
+                                        if arg.kind() == "record_pattern_argument" {
+                                            for binding in arg.children(&mut arg.walk()) {
+                                                if binding.kind() == "record_pattern"
+                                                    && has_all_discarded_fields(binding)
+                                                    && let Some(name) =
+                                                        get_constructor_name(binding, source)?
+                                                {
+                                                    let line = binding.start_position().row + 1;
+                                                    results.push((line, name.to_string()));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+fn check_no_discarded_error_fields(source: &str, tree: &Tree) -> Vec<String> {
+    let source_bytes = source.as_bytes();
+    let mut clauses = Vec::new();
+    find_case_clauses(tree.root_node(), &mut clauses);
+
+    let mut errors = Vec::new();
+    for clause in clauses {
+        match find_discarded_error_fields(clause, source_bytes) {
+            Ok(findings) => {
+                for (line, name) in findings {
+                    errors.push(format!("line {line}: Error({name}) discards all fields"));
+                }
+            }
+            Err(utf8_err) => {
+                errors.push(format!("UTF-8 error: {utf8_err}"));
+            }
+        }
+    }
+    errors
+}
 fn check_clause_for_ignored_error(
     clause: Node<'_>,
     source_bytes: &[u8],
@@ -396,6 +490,19 @@ mod tests {
         (source, tree)
     }
 
+    #[test]
+    fn no_discarded_error_fields_detects_violation() {
+        let (source, tree) = parse_fixture("no-discarded-error-fields.gleam");
+        let errors = check_no_discarded_error_fields(&source, &tree);
+        assert_eq!(errors.len(), 5);
+    }
+
+    #[test]
+    fn no_discarded_error_fields_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-discarded-error-fields.gleam");
+        let errors = check_no_discarded_error_fields(&source, &tree);
+        assert!(errors.is_empty());
+    }
     #[test]
     fn exact_versions_detects_violation() {
         let content = read_fixture("exact-versions.toml");
