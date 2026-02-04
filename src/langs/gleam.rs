@@ -39,6 +39,11 @@ const GLEAM_RULES: &[GleamRule] = &[
         name: "no-ignored-error",
     },
     GleamRule {
+        check: check_no_nested_result,
+        hint: Some("use `use value <- result.try(expr)` to flatten"),
+        name: "no-nested-result",
+    },
+    GleamRule {
         check: check_no_unwrap,
         hint: Some("use pattern matching or let assert instead"),
         name: "no-unwrap",
@@ -273,6 +278,152 @@ fn find_function_calls<'tree>(node: Node<'tree>, calls: &mut Vec<Node<'tree>>) {
     }
 }
 
+fn find_case_expressions<'tree>(node: Node<'tree>, cases: &mut Vec<Node<'tree>>) {
+    if node.kind() == "case" {
+        cases.push(node);
+    }
+    for child in node.children(&mut node.walk()) {
+        find_case_expressions(child, cases);
+    }
+}
+
+fn case_has_pattern(node: Node<'_>, source: &[u8], pattern_name: &str) -> bool {
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "case_clauses" {
+            for clause in child.children(&mut child.walk()) {
+                if clause.kind() == "case_clause" {
+                    for part in clause.children(&mut clause.walk()) {
+                        if part.kind() == "case_clause_patterns" {
+                            for pattern in part.children(&mut part.walk()) {
+                                if pattern.kind() == "case_clause_pattern" {
+                                    for inner in pattern.children(&mut pattern.walk()) {
+                                        if inner.kind() == "record_pattern"
+                                            && let Ok(Some(name)) =
+                                                get_constructor_name(inner, source)
+                                            && name == pattern_name
+                                        {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn find_cases_in_body<'tree>(
+    body: Node<'tree>,
+    cases: &mut Vec<Node<'tree>>,
+    source: &[u8],
+    ok_pattern: &str,
+    err_pattern: &str,
+) {
+    if body.kind() == "case"
+        && case_has_pattern(body, source, ok_pattern)
+        && case_has_pattern(body, source, err_pattern)
+    {
+        cases.push(body);
+        return;
+    }
+    for child in body.children(&mut body.walk()) {
+        if child.kind() == "case"
+            && case_has_pattern(child, source, ok_pattern)
+            && case_has_pattern(child, source, err_pattern)
+        {
+            cases.push(child);
+        } else {
+            find_cases_in_body(child, cases, source, ok_pattern, err_pattern);
+        }
+    }
+}
+
+fn find_nested_cases_in_case<'tree>(
+    case_node: Node<'tree>,
+    nested: &mut Vec<Node<'tree>>,
+    source: &[u8],
+    ok_pattern: &str,
+    err_pattern: &str,
+) {
+    for child in case_node.children(&mut case_node.walk()) {
+        if child.kind() == "case_clauses" {
+            for clause in child.children(&mut child.walk()) {
+                if clause.kind() == "case_clause" {
+                    let mut found_arrow = false;
+                    for part in clause.children(&mut clause.walk()) {
+                        match (part.kind(), found_arrow) {
+                            ("->", _) => found_arrow = true,
+                            (_, true) => {
+                                find_cases_in_body(part, nested, source, ok_pattern, err_pattern);
+                            }
+                            (_, false) => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn check_nested_case(
+    source: &str,
+    tree: &Tree,
+    ok_pattern: &str,
+    err_pattern: &str,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    let source_bytes = source.as_bytes();
+
+    let mut cases = Vec::new();
+    find_case_expressions(tree.root_node(), &mut cases);
+
+    let top_level_cases: Vec<_> = cases
+        .iter()
+        .filter(|case| {
+            case_has_pattern(**case, source_bytes, ok_pattern)
+                && case_has_pattern(**case, source_bytes, err_pattern)
+        })
+        .collect();
+
+    for case in top_level_cases {
+        let mut level1_nested = Vec::new();
+        find_nested_cases_in_case(
+            *case,
+            &mut level1_nested,
+            source_bytes,
+            ok_pattern,
+            err_pattern,
+        );
+
+        for nested_case in level1_nested {
+            let mut level2_nested = Vec::new();
+            find_nested_cases_in_case(
+                nested_case,
+                &mut level2_nested,
+                source_bytes,
+                ok_pattern,
+                err_pattern,
+            );
+
+            for deeply_nested in level2_nested {
+                let line = deeply_nested.start_position().row + 1;
+                errors.push(format!(
+                    "line {line}: case nested 2 levels deep ({ok_pattern}/{err_pattern})"
+                ));
+            }
+        }
+    }
+
+    errors
+}
+
+fn check_no_nested_result(source: &str, tree: &Tree) -> Vec<String> {
+    check_nested_case(source, tree, "Ok", "Error")
+}
 fn is_unwrap_call(node: Node<'_>, source: &[u8]) -> bool {
     for child in node.children(&mut node.walk()) {
         if child.kind() == "field_access" {
@@ -533,6 +684,19 @@ mod tests {
         assert!(errors.is_empty());
     }
 
+    #[test]
+    fn no_nested_result_detects_violation() {
+        let (source, tree) = parse_fixture("no-nested-result.gleam");
+        let errors = check_no_nested_result(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_nested_result_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-nested-result.gleam");
+        let errors = check_no_nested_result(&source, &tree);
+        assert!(errors.is_empty());
+    }
     #[test]
     fn no_unwrap_detects_violation() {
         let (source, tree) = parse_fixture("no-unwrap.gleam");
