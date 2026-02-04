@@ -39,6 +39,11 @@ const GLEAM_RULES: &[GleamRule] = &[
         name: "no-ignored-error",
     },
     GleamRule {
+        check: check_no_nested_option,
+        hint: Some("use `use value <- option.then(expr)` to flatten"),
+        name: "no-nested-option",
+    },
+    GleamRule {
         check: check_no_nested_result,
         hint: Some("use `use value <- result.try(expr)` to flatten"),
         name: "no-nested-result",
@@ -424,6 +429,9 @@ fn check_nested_case(
 fn check_no_nested_result(source: &str, tree: &Tree) -> Vec<String> {
     check_nested_case(source, tree, "Ok", "Error")
 }
+fn check_no_nested_option(source: &str, tree: &Tree) -> Vec<String> {
+    check_nested_case(source, tree, "Some", "None")
+}
 fn is_unwrap_call(node: Node<'_>, source: &[u8]) -> bool {
     for child in node.children(&mut node.walk()) {
         if child.kind() == "field_access" {
@@ -684,6 +692,19 @@ mod tests {
         assert!(errors.is_empty());
     }
 
+    #[test]
+    fn no_nested_option_detects_violation() {
+        let (source, tree) = parse_fixture("no-nested-option.gleam");
+        let errors = check_no_nested_option(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_nested_option_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-nested-option.gleam");
+        let errors = check_no_nested_option(&source, &tree);
+        assert!(errors.is_empty());
+    }
     #[test]
     fn no_nested_result_detects_violation() {
         let (source, tree) = parse_fixture("no-nested-result.gleam");
