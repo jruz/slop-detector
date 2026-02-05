@@ -1,10 +1,7 @@
-pub fn deeply_nested_if(a, b, c) {
+pub fn nested_if(a, b) {
   case a {
     True -> case b {
-      True -> case c {
-        True -> "all true"
-        False -> "c false"
-      }
+      True -> "both true"
       False -> "b false"
     }
     False -> "a false"

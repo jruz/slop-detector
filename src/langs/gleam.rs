@@ -401,31 +401,14 @@ fn check_nested_case(
         .collect();
 
     for case in top_level_cases {
-        let mut level1_nested = Vec::new();
-        find_nested_cases_in_case(
-            *case,
-            &mut level1_nested,
-            source_bytes,
-            ok_pattern,
-            err_pattern,
-        );
+        let mut nested = Vec::new();
+        find_nested_cases_in_case(*case, &mut nested, source_bytes, ok_pattern, err_pattern);
 
-        for nested_case in level1_nested {
-            let mut level2_nested = Vec::new();
-            find_nested_cases_in_case(
-                nested_case,
-                &mut level2_nested,
-                source_bytes,
-                ok_pattern,
-                err_pattern,
-            );
-
-            for deeply_nested in level2_nested {
-                let line = deeply_nested.start_position().row + 1;
-                errors.push(format!(
-                    "line {line}: case nested 2 levels deep ({ok_pattern}/{err_pattern})"
-                ));
-            }
+        for nested_case in nested {
+            let line = nested_case.start_position().row + 1;
+            errors.push(format!(
+                "line {line}: nested case on {ok_pattern}/{err_pattern}"
+            ));
         }
     }
 
@@ -494,17 +477,12 @@ fn check_no_nested_if(source: &str, tree: &Tree) -> Vec<String> {
         .collect();
 
     for case in top_level_bool_cases {
-        let mut level1_nested = Vec::new();
-        find_nested_bool_cases(*case, &mut level1_nested, source_bytes);
+        let mut nested = Vec::new();
+        find_nested_bool_cases(*case, &mut nested, source_bytes);
 
-        for nested_case in level1_nested {
-            let mut level2_nested = Vec::new();
-            find_nested_bool_cases(nested_case, &mut level2_nested, source_bytes);
-
-            for deeply_nested in level2_nested {
-                let line = deeply_nested.start_position().row + 1;
-                errors.push(format!("line {line}: case on Bool nested 3 levels deep"));
-            }
+        for nested_case in nested {
+            let line = nested_case.start_position().row + 1;
+            errors.push(format!("line {line}: nested case on Bool"));
         }
     }
 
