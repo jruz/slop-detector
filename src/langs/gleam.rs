@@ -34,9 +34,19 @@ const GLEAM_RULES: &[GleamRule] = &[
         name: "no-discarded-error-fields",
     },
     GleamRule {
+        check: check_no_discarded_ok,
+        hint: Some("use the Ok value or use `let assert Ok(Nil)` for unit"),
+        name: "no-discarded-ok",
+    },
+    GleamRule {
         check: check_no_ignored_error,
         hint: Some("handle or propagate the error instead of ignoring it"),
         name: "no-ignored-error",
+    },
+    GleamRule {
+        check: check_no_let_assert_outside_main,
+        hint: Some("use pattern matching or result.try instead"),
+        name: "no-let-assert-outside-main",
     },
     GleamRule {
         check: check_no_nested_if,
@@ -523,6 +533,108 @@ fn check_no_unwrap(source: &str, tree: &Tree) -> Vec<String> {
     errors
 }
 
+fn find_let_asserts<'tree>(node: Node<'tree>, asserts: &mut Vec<Node<'tree>>) {
+    if node.kind() == "let_assert" {
+        asserts.push(node);
+    }
+    for child in node.children(&mut node.walk()) {
+        find_let_asserts(child, asserts);
+    }
+}
+
+fn get_containing_function_name<'tree>(
+    node: Node<'tree>,
+    root: Node<'tree>,
+    source: &'tree [u8],
+) -> Option<&'tree str> {
+    fn find_function_containing<'tree>(
+        current: Node<'tree>,
+        target_start: usize,
+        target_end: usize,
+        source: &'tree [u8],
+    ) -> Option<&'tree str> {
+        if current.kind() == "function" {
+            let start = current.start_byte();
+            let end = current.end_byte();
+            if target_start >= start && target_end <= end {
+                for child in current.children(&mut current.walk()) {
+                    if child.kind() == "identifier"
+                        && let Ok(text) = child.utf8_text(source)
+                    {
+                        return Some(text);
+                    }
+                }
+            }
+        }
+        for child in current.children(&mut current.walk()) {
+            if let Some(name) = find_function_containing(child, target_start, target_end, source) {
+                return Some(name);
+            }
+        }
+        None
+    }
+
+    find_function_containing(root, node.start_byte(), node.end_byte(), source)
+}
+
+fn check_no_let_assert_outside_main(source: &str, tree: &Tree) -> Vec<String> {
+    let mut errors = Vec::new();
+    let source_bytes = source.as_bytes();
+    let root = tree.root_node();
+
+    let mut asserts = Vec::new();
+    find_let_asserts(root, &mut asserts);
+
+    for assert_node in asserts {
+        let fn_name = get_containing_function_name(assert_node, root, source_bytes);
+        if fn_name != Some("main") {
+            let line = assert_node.start_position().row + 1;
+            errors.push(format!("line {line}: let assert outside main"));
+        }
+    }
+
+    errors
+}
+
+fn let_assert_has_discarded_ok(node: Node<'_>, source: &[u8]) -> bool {
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "record_pattern" && get_constructor_name(child, source) == Ok(Some("Ok"))
+        {
+            for args in child.children(&mut child.walk()) {
+                if args.kind() == "record_pattern_arguments" {
+                    for arg in args.children(&mut args.walk()) {
+                        if arg.kind() == "record_pattern_argument" {
+                            for binding in arg.children(&mut arg.walk()) {
+                                if binding.kind() == "discard" {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn check_no_discarded_ok(source: &str, tree: &Tree) -> Vec<String> {
+    let mut errors = Vec::new();
+    let source_bytes = source.as_bytes();
+
+    let mut asserts = Vec::new();
+    find_let_asserts(tree.root_node(), &mut asserts);
+
+    for assert_node in asserts {
+        if let_assert_has_discarded_ok(assert_node, source_bytes) {
+            let line = assert_node.start_position().row + 1;
+            errors.push(format!("line {line}: let assert Ok(_)"));
+        }
+    }
+
+    errors
+}
+
 fn is_unpinned_version(version: &str) -> bool {
     let trimmed = version.trim();
     trimmed.starts_with(">=")
@@ -721,6 +833,20 @@ mod tests {
     }
 
     #[test]
+    fn no_discarded_ok_detects_violation() {
+        let (source, tree) = parse_fixture("no-discarded-ok.gleam");
+        let errors = check_no_discarded_ok(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_discarded_ok_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-discarded-ok.gleam");
+        let errors = check_no_discarded_ok(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
     fn exact_versions_detects_violation() {
         let content = read_fixture("exact-versions.toml");
         let toml: toml::Value = toml::from_str(&content).expect("valid toml");
@@ -747,6 +873,20 @@ mod tests {
     fn no_ignored_error_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-ignored-error.gleam");
         let errors = check_no_ignored_error(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_let_assert_outside_main_detects_violation() {
+        let (source, tree) = parse_fixture("no-let-assert-outside-main.gleam");
+        let errors = check_no_let_assert_outside_main(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_let_assert_outside_main_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-let-assert-outside-main.gleam");
+        let errors = check_no_let_assert_outside_main(&source, &tree);
         assert!(errors.is_empty());
     }
 
