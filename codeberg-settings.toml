@@ -1,0 +1,59 @@
+[repository]
+name = "slop-detector"
+owner = "jruz"
+topics = ["rust", "linter", "cli", "gleam", "typescript", "opentofu", "slop", "ai-slop", "claude", "claude-code"]
+
+[repository.settings]
+allow_fast_forward_only_merge = true
+allow_merge_commits = false
+allow_rebase = false
+allow_rebase_explicit = false
+allow_rebase_update = true
+allow_squash_merge = true
+archived = false
+default_allow_maintainer_edit = false
+default_branch = "main"
+default_delete_branch_after_merge = true
+default_merge_style = "squash"
+default_update_style = "merge"
+description = "Linter for detecting AI generated slop in Gleam, JS/TS, Rust, and OpenTofu code"
+globally_editable_wiki = false
+has_actions = false
+has_issues = true
+has_packages = false
+has_projects = false
+has_pull_requests = true
+has_releases = true
+has_wiki = false
+ignore_whitespace_conflicts = false
+mirror_interval = ""
+name = "slop-detector"
+private = false
+template = false
+website = ""
+wiki_branch = "main"
+
+[repository.settings.internal_tracker]
+allow_only_contributors_to_track_time = true
+enable_issue_dependencies = true
+enable_time_tracker = true
+
+[labels.bugs]
+color = "d73a4a"
+description = "Bug fixes in application code"
+
+[labels.deps]
+color = "0075ca"
+description = "Dependency updates"
+
+[labels.feat]
+color = "2da44e"
+description = "New functionality users can see or use"
+
+[labels.refa]
+color = "a2eeef"
+description = "Code restructuring, cleanup, renaming"
+
+[labels.tool]
+color = "7057ff"
+description = "CI, config, tooling, dev setup, tests"

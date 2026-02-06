@@ -1,6 +1,6 @@
 # Slop Detector
 
-Linter for detecting anti-patterns in Gleam, JS/TS, Rust, and OpenTofu code.
+Linter for detecting AI generated slop in Gleam, JS/TS, Rust, and OpenTofu code.
 
 ## Environment
 
