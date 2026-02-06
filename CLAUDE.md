@@ -16,6 +16,7 @@ src/
 ├── files.rs         # Glob-based file discovery
 ├── output.rs        # Format violations, generate config
 └── langs/
+    ├── mod.rs       # Re-exports lang modules
     ├── gleam.rs     # Gleam rules (tree-sitter + toml parser)
     ├── js.rs        # JS/TS rules (oxc parser)
     ├── rust.rs      # Rust rules (ra_ap_syntax parser)
@@ -87,6 +88,10 @@ fn rule_name_allows_valid() {
 }
 ```
 
-### 5. Verify
+### 5. Update README
+
+Add the new rule to the appropriate language section in `README.md`.
+
+### 6. Verify
 
 Run `just check` to ensure all tests pass.

@@ -41,7 +41,13 @@ slop-detector --create-config-for-violations
 
 ### Gleam
 - `exact-versions` - Pin dependency versions in gleam.toml
+- `no-discarded-error-fields` - Log or propagate error details instead of discarding
+- `no-discarded-ok` - Use the Ok value or use `let assert Ok(Nil)` for unit
 - `no-ignored-error` - Handle or propagate errors instead of ignoring
+- `no-let-assert-outside-main` - Use pattern matching or result.try instead
+- `no-nested-if` - Use multi-pattern case or bool.guard to flatten
+- `no-nested-option` - Use `use value <- option.then(expr)` to flatten
+- `no-nested-result` - Use `use value <- result.try(expr)` to flatten
 - `no-unwrap` - Use pattern matching or let assert instead
 
 ### JS/TS
