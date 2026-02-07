@@ -34,6 +34,11 @@ const GLEAM_RULES: &[GleamRule] = &[
         name: "no-discarded-error-fields",
     },
     GleamRule {
+        check: check_no_error_passthrough,
+        hint: Some("use `use value <- result.try(expr)` to avoid re-wrapping"),
+        name: "no-error-passthrough",
+    },
+    GleamRule {
         check: check_no_discarded_ok,
         hint: Some("use the Ok value or use `let assert Ok(Nil)` for unit"),
         name: "no-discarded-ok",
@@ -222,6 +227,66 @@ fn check_no_discarded_error_fields(source: &str, tree: &Tree) -> Vec<String> {
                     errors.push(format!("line {line}: Error({name}) discards all fields"));
                 }
             }
+            Err(utf8_err) => {
+                errors.push(format!("UTF-8 error: {utf8_err}"));
+            }
+        }
+    }
+    errors
+}
+
+fn check_clause_for_error_passthrough(
+    clause: Node<'_>,
+    source_bytes: &[u8],
+) -> Result<Option<String>, std::str::Utf8Error> {
+    let mut patterns_node = None;
+    let mut body_node = None;
+    let mut found_arrow = false;
+
+    for child in clause.children(&mut clause.walk()) {
+        match child.kind() {
+            "case_clause_patterns" => patterns_node = Some(child),
+            "->" => found_arrow = true,
+            _ if found_arrow && body_node.is_none() => body_node = Some(child),
+            _ => {}
+        }
+    }
+
+    let (Some(patterns), Some(body)) = (patterns_node, body_node) else {
+        return Ok(None);
+    };
+
+    let Some(binding) = extract_error_binding(patterns, source_bytes)? else {
+        return Ok(None);
+    };
+
+    if binding.starts_with('_') {
+        return Ok(None);
+    }
+
+    let body_str = body.utf8_text(source_bytes)?;
+    let expected = format!("Error({binding})");
+
+    if body_str.trim() == expected {
+        let line = clause.start_position().row + 1;
+        return Ok(Some(format!(
+            "line {line}: Error({binding}) -> Error({binding})"
+        )));
+    }
+
+    Ok(None)
+}
+
+fn check_no_error_passthrough(source: &str, tree: &Tree) -> Vec<String> {
+    let source_bytes = source.as_bytes();
+    let mut clauses = Vec::new();
+    find_case_clauses(tree.root_node(), &mut clauses);
+
+    let mut errors = Vec::new();
+    for clause in clauses {
+        match check_clause_for_error_passthrough(clause, source_bytes) {
+            Ok(Some(error)) => errors.push(error),
+            Ok(None) => {}
             Err(utf8_err) => {
                 errors.push(format!("UTF-8 error: {utf8_err}"));
             }
@@ -859,6 +924,20 @@ mod tests {
         let content = read_fixture("valid-versions.toml");
         let toml: toml::Value = toml::from_str(&content).expect("valid toml");
         let errors = check_exact_versions(&toml, "test");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_error_passthrough_detects_violation() {
+        let (source, tree) = parse_fixture("no-error-passthrough.gleam");
+        let errors = check_no_error_passthrough(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_error_passthrough_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-error-passthrough.gleam");
+        let errors = check_no_error_passthrough(&source, &tree);
         assert!(errors.is_empty());
     }
 
