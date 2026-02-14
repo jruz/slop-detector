@@ -180,7 +180,6 @@ fn get_callee_text(expr: &oxc::ast::ast::CallExpression<'_>) -> String {
 
 struct TsVisitor<'src> {
     console_errors: Vec<String>,
-    early_return_errors: Vec<String>,
     inside_main: bool,
     interface_errors: Vec<String>,
     path: &'src str,
@@ -254,14 +253,6 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         walk::walk_logical_expression(self, expr);
     }
 
-    fn visit_return_statement(&mut self, stmt: &oxc::ast::ast::ReturnStatement<'src>) {
-        if stmt.argument.is_none() {
-            let line = line_number(self.source, stmt.span.start);
-            self.early_return_errors.push(format!("line {line}"));
-        }
-        walk::walk_return_statement(self, stmt);
-    }
-
     fn visit_throw_statement(&mut self, stmt: &oxc::ast::ast::ThrowStatement<'src>) {
         let line = line_number(self.source, stmt.span.start);
         self.throw_errors.push(format!("line {line}"));
@@ -303,11 +294,6 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
             visitor.throw_errors,
             Some("return Result.err() instead"),
         ),
-        (
-            "no-early-return",
-            visitor.early_return_errors,
-            Some("return a Result or Option instead"),
-        ),
     ];
 
     rules
@@ -329,7 +315,6 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
 fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
     TsVisitor {
         console_errors: Vec::new(),
-        early_return_errors: Vec::new(),
         inside_main: false,
         interface_errors: Vec::new(),
         path,
@@ -470,19 +455,6 @@ mod tests {
     fn no_console_allows_valid() {
         let violations = parse_ts_fixture("valid-console");
         assert!(!has_violation(&violations, "no-console"));
-    }
-
-    #[test]
-    fn no_early_return_detects_violation() {
-        let violations = parse_ts_fixture("no-early-return");
-        assert!(has_violation(&violations, "no-early-return"));
-        assert_eq!(violations.len(), 2);
-    }
-
-    #[test]
-    fn no_early_return_allows_valid() {
-        let violations = parse_ts_fixture("valid-return");
-        assert!(!has_violation(&violations, "no-early-return"));
     }
 
     #[test]

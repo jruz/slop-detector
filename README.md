@@ -58,7 +58,6 @@ slop-detector --create-config-for-violations
 ### JS/TS
 - `exact-versions` - Pin dependency versions in package.json
 - `no-console` - Keep console calls in main() only
-- `no-early-return` - Return Result/Option instead
 - `no-interface` - Use type instead of interface
 - `no-scripts-section` - No scripts in package.json
 - `no-silent-defaults` - Avoid `x || []`, `x ?? {}` patterns
