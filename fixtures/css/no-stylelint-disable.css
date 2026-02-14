@@ -1,0 +1,15 @@
+/* stylelint-disable color-named */
+a {
+  color: red;
+}
+/* stylelint-enable color-named */
+
+b {
+  /* stylelint-disable-line declaration-no-important */
+  color: blue !important;
+}
+
+c {
+  /* stylelint-disable-next-line declaration-no-important */
+  color: green !important;
+}

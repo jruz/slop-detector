@@ -11,13 +11,14 @@ use clap::{Parser, ValueEnum};
 use color_eyre::Result;
 
 use config::{filter_violations, load_config};
-use langs::{gleam, js, rust, tofu};
+use langs::{css, gleam, js, rust, tofu};
 use output::{format_violations, generate_config_toml};
 use types::Violation;
 
 #[derive(Debug, Clone, ValueEnum)]
 enum Command {
     All,
+    Css,
     Gleam,
     Js,
     Rust,
@@ -26,6 +27,7 @@ enum Command {
 
 #[derive(Debug, Clone, Copy)]
 enum SingleCommand {
+    Css,
     Gleam,
     Js,
     Rust,
@@ -33,6 +35,7 @@ enum SingleCommand {
 }
 
 const ALL_COMMANDS: &[SingleCommand] = &[
+    SingleCommand::Css,
     SingleCommand::Gleam,
     SingleCommand::Js,
     SingleCommand::Rust,
@@ -41,6 +44,7 @@ const ALL_COMMANDS: &[SingleCommand] = &[
 
 fn run_check(cmd: SingleCommand) -> types::CheckResult {
     match cmd {
+        SingleCommand::Css => css::check(),
         SingleCommand::Gleam => gleam::check(),
         SingleCommand::Js => js::check(),
         SingleCommand::Rust => rust::check(),
@@ -50,7 +54,9 @@ fn run_check(cmd: SingleCommand) -> types::CheckResult {
 
 #[derive(Parser, Debug)]
 #[command(name = "slop-detector")]
-#[command(about = "Linter for detecting anti-patterns in Gleam, JS/TS, Rust, and OpenTofu code")]
+#[command(
+    about = "Linter for detecting anti-patterns in CSS, Gleam, JS/TS, Rust, and OpenTofu code"
+)]
 struct Args {
     #[arg(value_enum, default_value = "all")]
     command: Command,
@@ -72,6 +78,7 @@ fn main() -> Result<ExitCode> {
 
     let commands_to_run: &[SingleCommand] = match args.command {
         Command::All => ALL_COMMANDS,
+        Command::Css => &[SingleCommand::Css],
         Command::Gleam => &[SingleCommand::Gleam],
         Command::Js => &[SingleCommand::Js],
         Command::Rust => &[SingleCommand::Rust],
