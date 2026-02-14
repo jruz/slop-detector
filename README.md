@@ -62,7 +62,6 @@ slop-detector --create-config-for-violations
 - `no-scripts-section` - No scripts in package.json
 - `no-silent-defaults` - Avoid `x || []`, `x ?? {}` patterns
 - `no-stderr-write` - Avoid writing to stderr
-- `no-throw` - Return Result.err() instead
 
 ### Rust
 - `no-allow-attr` - Refactor instead of suppressing lints

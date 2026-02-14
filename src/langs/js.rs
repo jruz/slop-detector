@@ -186,7 +186,6 @@ struct TsVisitor<'src> {
     silent_default_errors: Vec<String>,
     source: &'src str,
     stderr_write_errors: Vec<String>,
-    throw_errors: Vec<String>,
 }
 
 impl<'src> Visit<'src> for TsVisitor<'src> {
@@ -253,12 +252,6 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         walk::walk_logical_expression(self, expr);
     }
 
-    fn visit_throw_statement(&mut self, stmt: &oxc::ast::ast::ThrowStatement<'src>) {
-        let line = line_number(self.source, stmt.span.start);
-        self.throw_errors.push(format!("line {line}"));
-        walk::walk_throw_statement(self, stmt);
-    }
-
     fn visit_ts_interface_declaration(
         &mut self,
         decl: &oxc::ast::ast::TSInterfaceDeclaration<'src>,
@@ -289,11 +282,6 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
             visitor.stderr_write_errors,
             Some("use console.error instead"),
         ),
-        (
-            "no-throw",
-            visitor.throw_errors,
-            Some("return Result.err() instead"),
-        ),
     ];
 
     rules
@@ -321,7 +309,6 @@ fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
         silent_default_errors: Vec::new(),
         source,
         stderr_write_errors: Vec::new(),
-        throw_errors: Vec::new(),
     }
 }
 
@@ -488,18 +475,5 @@ mod tests {
         let violations = parse_ts_fixture("no-stderr-write");
         assert!(has_violation(&violations, "no-stderr-write"));
         assert_eq!(violations.len(), 1);
-    }
-
-    #[test]
-    fn no_throw_detects_violation() {
-        let violations = parse_ts_fixture("no-throw");
-        assert!(has_violation(&violations, "no-throw"));
-        assert_eq!(violations.len(), 1);
-    }
-
-    #[test]
-    fn no_throw_allows_valid() {
-        let violations = parse_ts_fixture("valid-result");
-        assert!(!has_violation(&violations, "no-throw"));
     }
 }
