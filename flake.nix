@@ -16,12 +16,15 @@
         rust = pkgs.rust-bin.stable.${rustVersion}.default.override {
           extensions = [ "rust-analyzer" "rust-src" ];
         };
+        nu-lint = import ./nu-lint.nix { inherit pkgs; };
         commonPackages = with pkgs; [
           cargo-edit
           cargo-nextest
           cargo-outdated
           cargo-watch
           fd
+          nu-lint
+          nushell
           ripgrep
           rust
         ];

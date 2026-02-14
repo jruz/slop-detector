@@ -63,7 +63,18 @@ rust-upgrade:
     cargo upgrade --incompatible
     cargo update
 
+nu-check:
+    #!/usr/bin/env nu
+    fd --absolute-path --extension nu --exec nu --commands 'nu-check --debug {}'
+    nu-lint --config nu-lint.toml
+
+nu-fix:
+    nu-lint \
+        --config nu-lint.toml \
+        --fix
+
 check:
+    just nu-check
     just rust-check
 
 build:
