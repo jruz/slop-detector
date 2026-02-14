@@ -1,5 +1,5 @@
 [ignore]
-rules = []
+rules = ["rust-version-sync"]
 files = []
 
 [ignore.by-rule]

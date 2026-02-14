@@ -12,11 +12,10 @@
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
-        rustVersion = "1.92.0";
-        rust = pkgs.rust-bin.stable.${rustVersion}.default.override {
-          extensions = [ "rust-analyzer" "rust-src" ];
-        };
         nu-lint = import ./nu-lint.nix { inherit pkgs; };
+        rustToolchain = builtins.fromTOML (builtins.readFile ./rust-toolchain.toml);
+        rustVersion = rustToolchain.toolchain.channel;
+        rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         commonPackages = with pkgs; [
           cargo-edit
           cargo-nextest
@@ -49,7 +48,7 @@
             echo ""
             echo "  Rust Development Shell"
             echo "  ───────────────────────────"
-            echo "  Rust:        $(rustc --version | cut -d' ' -f2)"
+            echo "  Rust:        ${rustVersion}"
             echo ""
           '' + pkgs.lib.optionalString pkgs.stdenv.isLinux ''
             export LOCALE_ARCHIVE="${pkgs.glibcLocales}/lib/locale/locale-archive"
