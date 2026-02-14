@@ -97,7 +97,6 @@ slop-detector --create-config-for-violations
 - `no-unwrap-unchecked` - Use safe unwrap methods
 - `no-while-let-ok` - Handle errors explicitly, don't silently stop
 - `pinned-versions` - Pin dependency versions in Cargo.toml
-- `rust-version-sync` - Keep Rust version in sync across config files
 - `thiserror-unused-fields` - Use all error fields in #[error("...")]
 
 ### OpenTofu

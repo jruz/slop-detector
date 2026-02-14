@@ -188,144 +188,6 @@ const CARGO_TOML_RULES: &[CargoTomlRule] = &[CargoTomlRule {
     name: "pinned-versions",
 }];
 
-struct VersionSource {
-    file: String,
-    version: String,
-}
-
-const VERSION_SOURCE_FILES: &[&str] = &[
-    "rust-toolchain.toml",
-    "flake.nix",
-    "mise.toml",
-    ".mise.toml",
-    ".tool-versions",
-];
-
-fn extract_rust_toolchain_version(path: &str) -> Option<VersionSource> {
-    let Ok(content) = fs::read_to_string(path) else {
-        return None;
-    };
-    let Ok(toml) = toml::from_str::<toml::Value>(&content) else {
-        return None;
-    };
-    let version = toml.get("toolchain")?.get("channel")?.as_str()?.to_string();
-    Some(VersionSource {
-        file: path.to_string(),
-        version,
-    })
-}
-
-fn extract_flake_nix_version(path: &str) -> Option<VersionSource> {
-    let Ok(content) = fs::read_to_string(path) else {
-        return None;
-    };
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("rustVersion") && trimmed.contains('=') {
-            let after_eq = trimmed.split('=').nth(1)?;
-            let version = after_eq
-                .trim()
-                .trim_matches('"')
-                .trim_matches(';')
-                .trim_matches('"')
-                .to_string();
-            if !version.is_empty() {
-                return Some(VersionSource {
-                    file: path.to_string(),
-                    version,
-                });
-            }
-        }
-    }
-    None
-}
-
-fn extract_mise_version(path: &str) -> Option<VersionSource> {
-    let Ok(content) = fs::read_to_string(path) else {
-        return None;
-    };
-    let Ok(toml) = toml::from_str::<toml::Value>(&content) else {
-        return None;
-    };
-    let rust_value = toml.get("tools")?.get("rust")?;
-    let version = match rust_value {
-        toml::Value::String(str_val) => str_val.clone(),
-        toml::Value::Array(arr) => arr.first()?.as_str()?.to_string(),
-        _ => return None,
-    };
-    Some(VersionSource {
-        file: path.to_string(),
-        version,
-    })
-}
-
-fn extract_tool_versions_version(path: &str) -> Option<VersionSource> {
-    let Ok(content) = fs::read_to_string(path) else {
-        return None;
-    };
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("rust ") {
-            let version = trimmed.strip_prefix("rust ")?.trim().to_string();
-            if !version.is_empty() {
-                return Some(VersionSource {
-                    file: path.to_string(),
-                    version,
-                });
-            }
-        }
-    }
-    None
-}
-
-fn collect_rust_versions_in(base_path: &str) -> Vec<VersionSource> {
-    let mut sources = Vec::new();
-    for file in VERSION_SOURCE_FILES {
-        let full_path = if base_path.is_empty() {
-            (*file).to_string()
-        } else {
-            format!("{base_path}/{file}")
-        };
-        let source = match *file {
-            "rust-toolchain.toml" => extract_rust_toolchain_version(&full_path),
-            "flake.nix" => extract_flake_nix_version(&full_path),
-            "mise.toml" | ".mise.toml" => extract_mise_version(&full_path),
-            ".tool-versions" => extract_tool_versions_version(&full_path),
-            _ => None,
-        };
-        if let Some(found) = source {
-            sources.push(found);
-        }
-    }
-    sources
-}
-
-fn check_rust_version_sync_in(base_path: &str) -> Option<Violation> {
-    let sources = collect_rust_versions_in(base_path);
-    if sources.len() < 2 {
-        return None;
-    }
-    let first_version = &sources.first()?.version;
-    let has_mismatch = sources.iter().any(|src| src.version != *first_version);
-    if !has_mismatch {
-        return None;
-    }
-    let errors = sources
-        .iter()
-        .map(|src| format!("{}: {}", src.file, src.version))
-        .collect();
-    Some(Violation {
-        errors,
-        file: "project".to_string(),
-        hint: Some("all rust version sources should specify the same version".to_string()),
-        rule: "rust-version-sync".to_string(),
-    })
-}
-
-fn check_rust_version_sync() -> Option<Violation> {
-    check_rust_version_sync_in("")
-}
-
 struct ParsedCargoToml {
     path: String,
     toml: toml::Value,
@@ -1212,10 +1074,6 @@ pub fn check() -> CheckResult {
 
     let mut violations = run_rules(&parsed, RULES);
     violations.extend(run_cargo_toml_rules(&parsed_cargo_tomls, CARGO_TOML_RULES));
-    if let Some(version_sync_violation) = check_rust_version_sync() {
-        violations.push(version_sync_violation);
-    }
-
     CheckResult {
         errors,
         file_count: parsed.len() + parsed_cargo_tomls.len(),
@@ -1672,19 +1530,5 @@ mod tests {
         let (source, ast) = parse_fixture("valid-thiserror-unused-fields");
         let errors = check_thiserror_unused_fields(&source, &ast);
         assert!(errors.is_empty());
-    }
-
-    #[test]
-    fn rust_version_sync_detects_violation() {
-        let result = check_rust_version_sync_in("fixtures/rust/rust-version-sync");
-        assert!(result.is_some());
-        let violation = result.expect("should have violation");
-        assert_eq!(violation.errors.len(), 4);
-    }
-
-    #[test]
-    fn rust_version_sync_allows_valid() {
-        let violation = check_rust_version_sync_in("fixtures/rust/valid-rust-version-sync");
-        assert!(violation.is_none());
     }
 }
