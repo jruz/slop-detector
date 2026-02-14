@@ -22,10 +22,14 @@
           cargo-outdated
           cargo-watch
           fd
+          just
           nu-lint
           nushell
           ripgrep
           rust
+          taplo
+          woodpecker-cli
+          zip
         ];
         darwinPackages = with pkgs; [
           libiconv
@@ -49,6 +53,7 @@
             echo "  Rust Development Shell"
             echo "  ───────────────────────────"
             echo "  Rust:        ${rustVersion}"
+            echo "  Nextest:     ${pkgs.cargo-nextest.version}"
             echo ""
           '' + pkgs.lib.optionalString pkgs.stdenv.isLinux ''
             export LOCALE_ARCHIVE="${pkgs.glibcLocales}/lib/locale/locale-archive"

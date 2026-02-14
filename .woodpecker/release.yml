@@ -1,0 +1,40 @@
+when:
+  - event: tag
+
+steps:
+  - name: BUILD_LINUX
+    image: ghcr.io/rust-cross/cargo-zigbuild:0.21.4
+    commands:
+      - rustup target add x86_64-unknown-linux-gnu
+      - rustup target add aarch64-unknown-linux-gnu
+      - cargo zigbuild --release --target x86_64-unknown-linux-gnu
+      - cargo zigbuild --release --target aarch64-unknown-linux-gnu
+      - cp target/x86_64-unknown-linux-gnu/release/slop-detector slop-detector-linux-x86_64
+      - cp target/aarch64-unknown-linux-gnu/release/slop-detector slop-detector-linux-arm64
+
+  - name: BUILD_MACOS
+    image: ghcr.io/rust-cross/cargo-zigbuild:0.21.4
+    commands:
+      - rustup target add x86_64-apple-darwin
+      - rustup target add aarch64-apple-darwin
+      - cargo zigbuild --release --target x86_64-apple-darwin
+      - cargo zigbuild --release --target aarch64-apple-darwin
+      - cp target/x86_64-apple-darwin/release/slop-detector slop-detector-macos-x86_64
+      - cp target/aarch64-apple-darwin/release/slop-detector slop-detector-macos-arm64
+
+  - name: BUILD_WINDOWS
+    image: ghcr.io/rust-cross/cargo-xwin:0.21.4
+    commands:
+      - rustup target add x86_64-pc-windows-msvc
+      - cargo xwin build --release --target x86_64-pc-windows-msvc
+      - cp target/x86_64-pc-windows-msvc/release/slop-detector.exe slop-detector-windows-x86_64.exe
+
+  - name: RELEASE
+    image: 127.0.0.1:5000/woodpecker-job:v0.0.13
+    environment:
+      CODEBERG_TOKEN:
+        from_secret: codeberg_token
+    commands:
+      - ls -la slop-detector-*
+      - . /entrypoint.sh
+      - nix develop --command just release-upload $${CI_COMMIT_TAG}

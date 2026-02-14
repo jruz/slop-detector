@@ -1,0 +1,50 @@
+[repo]
+name = "jruz/slop-detector"
+
+[secrets.codeberg_token]
+events = [
+    "tag",
+    "push",
+]
+value = """
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBaTkEyU20wdzhyT3Y3TWFk
+ZjJuc3p3bHZpSlZTendDLytxVG5TZWJ6azBVCmg2UUJQKzJOQVRiRFU3VWRRZXZG
+SmZwVTRxaCtvU2xXMXc4VVNzbjdyOTgKLT4gfGF4NSUtZ3JlYXNlIGVjIF17LXA7
+ISAoICdrWQp4TjM3bmtqYWJSa3FUbjJ2WVIzNzIxZnN5TkhNb1dBNU1lYmUwZW5o
+azBZQ2c4WjJrdUdjT0RpNVJOUyt0Z0xyCmkzcElJS25YWUtWcFRPM3RHU3JFczNs
+cwotLS0gK0F1djdjd01KTkJ0ZHYrMllIMjdjRWtVUFhNVXNUaEpOcFhWSUhSdyt4
+ZwoKY2EUcTybZrdgyLx48WY26rHaDflDbsbDdd0zbC5foPxtOdJwbeRAJtHh/1c+
+EqmmatlDqSPkAcxcWiDA0hOmqT2uY3VGEGE=
+-----END AGE ENCRYPTED FILE-----
+"""
+
+[secrets.CODEBERG_KEY]
+value = """
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA4bk0wVGxMVlA3Vy9lelV4
+dlIyWDJkOGdoVWtIZk5MZmJiZGVlQUR0V0NJClZiUlRGRkJXSXVpblNENUJ6VHlM
+amNSeWQ3RWVzVjhGRjgvNGI2aDVXMXcKLT4gNyF6PGctZ3JlYXNlIHtjKkUgamY+
+UVsgLDAiMT0KOXJkam5tK3M5WjhuSXJIeVEvRkdEZjNkdTlSd2N5Tk5xRDFCY1Zw
+QlVLSXB2cW9JTE5kZytLS0E1aGprSTQzSQoKLS0tIExvUEQ5Y2UrZVYvY0hldnNQ
+MFNUenJXV2JPbDZEWFNYTGlkZ0Jvc1lrOHMK3ZRrXs+/jBf0wU0dTeV+dc6j6MUw
+y4hXbsuFEOFDNwMVTe6ER7TeDx0B/acRu3yF4ZAa4qs1CO8Zjb805hmNt+g5Kg==
+-----END AGE ENCRYPTED FILE-----
+"""
+
+[settings]
+allow_deploy = false
+allow_pr = true
+cancel_previous_pipeline_events = [
+    "push",
+    "pull_request",
+]
+config_extension_endpoint = ""
+require_approval = "forks"
+timeout = 60
+visibility = "public"
+
+[settings.trusted]
+network = false
+security = false
+volumes = true
