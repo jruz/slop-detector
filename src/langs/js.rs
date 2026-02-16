@@ -183,8 +183,10 @@ struct TsVisitor<'src> {
     console_errors: Vec<String>,
     for_loop_errors: Vec<String>,
     inside_main: bool,
+    inside_try: u32,
     interface_errors: Vec<String>,
     path: &'src str,
+    read_file_sync_errors: Vec<String>,
     silent_default_errors: Vec<String>,
     source: &'src str,
     stderr_write_errors: Vec<String>,
@@ -205,6 +207,10 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         {
             self.inside_main = true;
         }
+
+        if matches!(kind, AstKind::TryStatement(_)) {
+            self.inside_try += 1;
+        }
     }
 
     fn leave_node(&mut self, kind: AstKind<'src>) {
@@ -219,6 +225,10 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
             && is_binding_named_main(&decl.id)
         {
             self.inside_main = false;
+        }
+
+        if matches!(kind, AstKind::TryStatement(_)) {
+            self.inside_try -= 1;
         }
     }
 
@@ -239,6 +249,16 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         if callee_text == "process.stdout.write" {
             let line = line_number(self.source, expr.span.start);
             self.stdout_write_errors.push(format!("line {line}"));
+        }
+
+        let is_read_file_sync = callee_text == "fs.readFileSync"
+            || matches!(
+                &expr.callee,
+                Expression::Identifier(id) if id.name == "readFileSync"
+            );
+        if is_read_file_sync && self.inside_try == 0 {
+            let line = line_number(self.source, expr.span.start);
+            self.read_file_sync_errors.push(format!("line {line}"));
         }
 
         walk::walk_call_expression(self, expr);
@@ -317,6 +337,11 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
             Some("use map, filter, or reduce instead"),
         ),
         (
+            "no-read-file-sync-without-try",
+            visitor.read_file_sync_errors,
+            Some("wrap in try/catch"),
+        ),
+        (
             "no-interface",
             visitor.interface_errors,
             Some("use type instead"),
@@ -361,8 +386,10 @@ fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
         console_errors: Vec::new(),
         for_loop_errors: Vec::new(),
         inside_main: false,
+        inside_try: 0,
         interface_errors: Vec::new(),
         path,
+        read_file_sync_errors: Vec::new(),
         silent_default_errors: Vec::new(),
         source,
         stderr_write_errors: Vec::new(),
@@ -484,6 +511,19 @@ mod tests {
         let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
         let errors = check_exact_versions(&pkg);
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_read_file_sync_without_try_detects_violation() {
+        let violations = parse_ts_fixture("no-read-file-sync-without-try");
+        assert!(has_violation(&violations, "no-read-file-sync-without-try"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_read_file_sync_without_try_allows_valid() {
+        let violations = parse_ts_fixture("valid-read-file-sync-without-try");
+        assert!(!has_violation(&violations, "no-read-file-sync-without-try"));
     }
 
     #[test]
