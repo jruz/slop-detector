@@ -256,7 +256,8 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
     fn visit_call_expression(&mut self, expr: &oxc::ast::ast::CallExpression<'src>) {
         let callee_text = get_callee_text(expr);
 
-        if callee_text.starts_with("console.") && !self.inside_main {
+        let is_logging_file = self.path.ends_with("/log.ts") || self.path.ends_with("/tracing.ts");
+        if callee_text.starts_with("console.") && !self.inside_main && !is_logging_file {
             let line = line_number(self.source, expr.span.start);
             self.console_errors
                 .push(format!("line {line}: {callee_text}"));
@@ -341,10 +342,12 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         &mut self,
         decl: &oxc::ast::ast::TSInterfaceDeclaration<'src>,
     ) {
-        let line = line_number(self.source, decl.span.start);
-        let name = &decl.id.name;
-        self.interface_errors
-            .push(format!("line {line}: interface {name}"));
+        if decl.id.name != "Window" {
+            let line = line_number(self.source, decl.span.start);
+            let name = &decl.id.name;
+            self.interface_errors
+                .push(format!("line {line}: interface {name}"));
+        }
         walk::walk_ts_interface_declaration(self, decl);
     }
 }
@@ -495,12 +498,15 @@ mod tests {
     }
 
     fn parse_ts_fixture(name: &str) -> Vec<Violation> {
-        let path = format!("fixtures/js/{name}.ts");
+        parse_ts_fixture_as(name, &format!("fixtures/js/{name}.ts"))
+    }
+
+    fn parse_ts_fixture_as(name: &str, path: &str) -> Vec<Violation> {
         let source = read_fixture(&format!("{name}.ts"));
         let allocator = Allocator::default();
         let parser = Parser::new(&allocator, &source, SourceType::ts());
         let result = parser.parse();
-        let mut visitor = create_visitor(&source, &path);
+        let mut visitor = create_visitor(&source, path);
         visitor.visit_program(&result.program);
         collect_violations(visitor)
     }
@@ -594,6 +600,18 @@ mod tests {
     }
 
     #[test]
+    fn no_console_allows_log_ts() {
+        let violations = parse_ts_fixture_as("no-console", "src/log.ts");
+        assert!(!has_violation(&violations, "no-console"));
+    }
+
+    #[test]
+    fn no_console_allows_tracing_ts() {
+        let violations = parse_ts_fixture_as("no-console", "src/tracing.ts");
+        assert!(!has_violation(&violations, "no-console"));
+    }
+
+    #[test]
     fn no_interface_detects_violation() {
         let violations = parse_ts_fixture("no-interface");
         assert!(has_violation(&violations, "no-interface"));
@@ -603,6 +621,12 @@ mod tests {
     #[test]
     fn no_interface_allows_valid() {
         let violations = parse_ts_fixture("valid-type");
+        assert!(!has_violation(&violations, "no-interface"));
+    }
+
+    #[test]
+    fn no_interface_allows_window() {
+        let violations = parse_ts_fixture("valid-interface-window");
         assert!(!has_violation(&violations, "no-interface"));
     }
 
