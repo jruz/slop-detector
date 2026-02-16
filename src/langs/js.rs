@@ -3,7 +3,7 @@ use std::path::Path;
 
 use oxc::allocator::Allocator;
 use oxc::ast::AstKind;
-use oxc::ast::ast::{BindingPattern, Expression, LogicalOperator};
+use oxc::ast::ast::{BindingPattern, Expression, LogicalOperator, TSType, TSTypeName};
 use oxc::parser::Parser;
 use oxc::span::SourceType;
 use oxc_ast_visit::{Visit, walk};
@@ -179,6 +179,7 @@ fn get_callee_text(expr: &oxc::ast::ast::CallExpression<'_>) -> String {
 }
 
 struct TsVisitor<'src> {
+    array_as_const_errors: Vec<String>,
     console_errors: Vec<String>,
     for_loop_errors: Vec<String>,
     inside_main: bool,
@@ -259,6 +260,20 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         walk::walk_logical_expression(self, expr);
     }
 
+    fn visit_ts_as_expression(&mut self, expr: &oxc::ast::ast::TSAsExpression<'src>) {
+        if matches!(expr.expression, Expression::ArrayExpression(_))
+            && matches!(
+                &expr.type_annotation,
+                TSType::TSTypeReference(type_ref)
+                    if matches!(&type_ref.type_name, TSTypeName::IdentifierReference(id) if id.name == "const")
+            )
+        {
+            let line = line_number(self.source, expr.span.start);
+            self.array_as_const_errors.push(format!("line {line}"));
+        }
+        walk::walk_ts_as_expression(self, expr);
+    }
+
     fn visit_for_statement(&mut self, stmt: &oxc::ast::ast::ForStatement<'src>) {
         let line = line_number(self.source, stmt.span.start);
         self.for_loop_errors.push(format!("line {line}: for"));
@@ -291,6 +306,11 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
 
 fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
     let rules: &[(&str, Vec<String>, Option<&str>)] = &[
+        (
+            "no-array-as-const",
+            visitor.array_as_const_errors,
+            Some("declare the type instead"),
+        ),
         (
             "no-for-loop",
             visitor.for_loop_errors,
@@ -337,6 +357,7 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
 
 fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
     TsVisitor {
+        array_as_const_errors: Vec::new(),
         console_errors: Vec::new(),
         for_loop_errors: Vec::new(),
         inside_main: false,
@@ -434,6 +455,19 @@ mod tests {
 
     fn has_violation(violations: &[Violation], rule: &str) -> bool {
         violations.iter().any(|violation| violation.rule == rule)
+    }
+
+    #[test]
+    fn no_array_as_const_detects_violation() {
+        let violations = parse_ts_fixture("no-array-as-const");
+        assert!(has_violation(&violations, "no-array-as-const"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_array_as_const_allows_valid() {
+        let violations = parse_ts_fixture("valid-array-as-const");
+        assert!(!has_violation(&violations, "no-array-as-const"));
     }
 
     #[test]

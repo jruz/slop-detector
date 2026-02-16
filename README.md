@@ -57,6 +57,7 @@ slop-detector --create-config-for-violations
 
 ### JS/TS
 - `exact-versions` - Pin dependency versions in package.json
+- `no-array-as-const` - Declare the type instead of using `[...] as const`
 - `no-console` - Keep console calls in main() only
 - `no-for-loop` - Use map, filter, or reduce instead of for loops
 - `no-interface` - Use type instead of interface
