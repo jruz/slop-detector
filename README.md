@@ -60,7 +60,7 @@ slop-detector --create-config-for-violations
 - `no-array-as-const` - Declare the type instead of using `[...] as const`
 - `no-console` - Keep console calls in main() only
 - `no-for-loop` - Use map, filter, or reduce instead of for loops
-- `no-read-file-sync-without-try` - Wrap readFileSync in try/catch
+- `no-throwing-fn-without-try` - Wrap throwing functions in try/catch
 - `no-interface` - Use type instead of interface
 - `no-scripts-section` - No scripts in package.json
 - `no-silent-defaults` - Avoid `x || []`, `x ?? {}` patterns

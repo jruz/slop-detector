@@ -15,6 +15,27 @@ const EXCLUDES: &[&str] = &["fixtures"];
 const PACKAGE_JSON_PATTERNS: &[&str] = &["package.json"];
 const TS_PATTERNS: &[&str] = &["*.ts", "*.tsx"];
 
+const THROWING_FNS: &[&str] = &[
+    "accessSync",
+    "appendFileSync",
+    "copyFileSync",
+    "execFileSync",
+    "execSync",
+    "JSON.parse",
+    "lstatSync",
+    "mkdirSync",
+    "readFileSync",
+    "readdirSync",
+    "readlinkSync",
+    "realpathSync",
+    "renameSync",
+    "rmSync",
+    "rmdirSync",
+    "statSync",
+    "unlinkSync",
+    "writeFileSync",
+];
+
 struct PackageJsonRule {
     check: fn(pkg: &serde_json::Value) -> Vec<String>,
     hint: Option<&'static str>,
@@ -186,7 +207,7 @@ struct TsVisitor<'src> {
     inside_try: u32,
     interface_errors: Vec<String>,
     path: &'src str,
-    read_file_sync_errors: Vec<String>,
+    throwing_fn_errors: Vec<String>,
     silent_default_errors: Vec<String>,
     source: &'src str,
     stderr_write_errors: Vec<String>,
@@ -251,14 +272,16 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
             self.stdout_write_errors.push(format!("line {line}"));
         }
 
-        let is_read_file_sync = callee_text == "fs.readFileSync"
-            || matches!(
-                &expr.callee,
-                Expression::Identifier(id) if id.name == "readFileSync"
-            );
-        if is_read_file_sync && self.inside_try == 0 {
+        let bare_name = match &expr.callee {
+            Expression::Identifier(id) => Some(id.name.as_str()),
+            _ => None,
+        };
+        let is_throwing = THROWING_FNS.contains(&callee_text.as_str())
+            || bare_name.is_some_and(|name| THROWING_FNS.contains(&name));
+        if is_throwing && self.inside_try == 0 {
             let line = line_number(self.source, expr.span.start);
-            self.read_file_sync_errors.push(format!("line {line}"));
+            let name = bare_name.unwrap_or(callee_text.as_str());
+            self.throwing_fn_errors.push(format!("line {line}: {name}"));
         }
 
         walk::walk_call_expression(self, expr);
@@ -337,8 +360,8 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
             Some("use map, filter, or reduce instead"),
         ),
         (
-            "no-read-file-sync-without-try",
-            visitor.read_file_sync_errors,
+            "no-throwing-fn-without-try",
+            visitor.throwing_fn_errors,
             Some("wrap in try/catch"),
         ),
         (
@@ -389,7 +412,7 @@ fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
         inside_try: 0,
         interface_errors: Vec::new(),
         path,
-        read_file_sync_errors: Vec::new(),
+        throwing_fn_errors: Vec::new(),
         silent_default_errors: Vec::new(),
         source,
         stderr_write_errors: Vec::new(),
@@ -514,16 +537,16 @@ mod tests {
     }
 
     #[test]
-    fn no_read_file_sync_without_try_detects_violation() {
-        let violations = parse_ts_fixture("no-read-file-sync-without-try");
-        assert!(has_violation(&violations, "no-read-file-sync-without-try"));
+    fn no_throwing_fn_without_try_detects_violation() {
+        let violations = parse_ts_fixture("no-throwing-fn-without-try");
+        assert!(has_violation(&violations, "no-throwing-fn-without-try"));
         assert_eq!(violations.len(), 1);
     }
 
     #[test]
-    fn no_read_file_sync_without_try_allows_valid() {
-        let violations = parse_ts_fixture("valid-read-file-sync-without-try");
-        assert!(!has_violation(&violations, "no-read-file-sync-without-try"));
+    fn no_throwing_fn_without_try_allows_valid() {
+        let violations = parse_ts_fixture("valid-throwing-fn-without-try");
+        assert!(!has_violation(&violations, "no-throwing-fn-without-try"));
     }
 
     #[test]
