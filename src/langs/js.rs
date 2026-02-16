@@ -272,15 +272,17 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
             self.stdout_write_errors.push(format!("line {line}"));
         }
 
-        let bare_name = match &expr.callee {
-            Expression::Identifier(id) => Some(id.name.as_str()),
+        let fn_name = match &expr.callee {
+            Expression::Identifier(id) if THROWING_FNS.contains(&id.name.as_str()) => {
+                Some(id.name.as_str())
+            }
+            _ if THROWING_FNS.contains(&callee_text.as_str()) => Some(callee_text.as_str()),
             _ => None,
         };
-        let is_throwing = THROWING_FNS.contains(&callee_text.as_str())
-            || bare_name.is_some_and(|name| THROWING_FNS.contains(&name));
-        if is_throwing && self.inside_try == 0 {
+        if let Some(name) = fn_name
+            && self.inside_try == 0
+        {
             let line = line_number(self.source, expr.span.start);
-            let name = bare_name.unwrap_or(callee_text.as_str());
             self.throwing_fn_errors.push(format!("line {line}: {name}"));
         }
 
