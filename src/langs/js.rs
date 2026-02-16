@@ -186,6 +186,7 @@ struct TsVisitor<'src> {
     silent_default_errors: Vec<String>,
     source: &'src str,
     stderr_write_errors: Vec<String>,
+    stdout_write_errors: Vec<String>,
 }
 
 impl<'src> Visit<'src> for TsVisitor<'src> {
@@ -231,6 +232,11 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         if callee_text == "process.stderr.write" {
             let line = line_number(self.source, expr.span.start);
             self.stderr_write_errors.push(format!("line {line}"));
+        }
+
+        if callee_text == "process.stdout.write" {
+            let line = line_number(self.source, expr.span.start);
+            self.stdout_write_errors.push(format!("line {line}"));
         }
 
         walk::walk_call_expression(self, expr);
@@ -282,6 +288,11 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
             visitor.stderr_write_errors,
             Some("use console.error instead"),
         ),
+        (
+            "no-stdout-write",
+            visitor.stdout_write_errors,
+            Some("use console.log instead"),
+        ),
     ];
 
     rules
@@ -309,6 +320,7 @@ fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
         silent_default_errors: Vec::new(),
         source,
         stderr_write_errors: Vec::new(),
+        stdout_write_errors: Vec::new(),
     }
 }
 
@@ -475,5 +487,18 @@ mod tests {
         let violations = parse_ts_fixture("no-stderr-write");
         assert!(has_violation(&violations, "no-stderr-write"));
         assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_stdout_write_detects_violation() {
+        let violations = parse_ts_fixture("no-stdout-write");
+        assert!(has_violation(&violations, "no-stdout-write"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_stdout_write_allows_valid() {
+        let violations = parse_ts_fixture("valid-stdout-write");
+        assert!(!has_violation(&violations, "no-stdout-write"));
     }
 }
