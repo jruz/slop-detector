@@ -180,6 +180,7 @@ fn get_callee_text(expr: &oxc::ast::ast::CallExpression<'_>) -> String {
 
 struct TsVisitor<'src> {
     console_errors: Vec<String>,
+    for_loop_errors: Vec<String>,
     inside_main: bool,
     interface_errors: Vec<String>,
     path: &'src str,
@@ -258,6 +259,24 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         walk::walk_logical_expression(self, expr);
     }
 
+    fn visit_for_statement(&mut self, stmt: &oxc::ast::ast::ForStatement<'src>) {
+        let line = line_number(self.source, stmt.span.start);
+        self.for_loop_errors.push(format!("line {line}: for"));
+        walk::walk_for_statement(self, stmt);
+    }
+
+    fn visit_for_in_statement(&mut self, stmt: &oxc::ast::ast::ForInStatement<'src>) {
+        let line = line_number(self.source, stmt.span.start);
+        self.for_loop_errors.push(format!("line {line}: for...in"));
+        walk::walk_for_in_statement(self, stmt);
+    }
+
+    fn visit_for_of_statement(&mut self, stmt: &oxc::ast::ast::ForOfStatement<'src>) {
+        let line = line_number(self.source, stmt.span.start);
+        self.for_loop_errors.push(format!("line {line}: for...of"));
+        walk::walk_for_of_statement(self, stmt);
+    }
+
     fn visit_ts_interface_declaration(
         &mut self,
         decl: &oxc::ast::ast::TSInterfaceDeclaration<'src>,
@@ -272,6 +291,11 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
 
 fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
     let rules: &[(&str, Vec<String>, Option<&str>)] = &[
+        (
+            "no-for-loop",
+            visitor.for_loop_errors,
+            Some("use map, filter, or reduce instead"),
+        ),
         (
             "no-interface",
             visitor.interface_errors,
@@ -314,6 +338,7 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
 fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
     TsVisitor {
         console_errors: Vec::new(),
+        for_loop_errors: Vec::new(),
         inside_main: false,
         interface_errors: Vec::new(),
         path,
@@ -441,6 +466,19 @@ mod tests {
         let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
         let errors = check_no_scripts_section(&pkg);
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_for_loop_detects_violation() {
+        let violations = parse_ts_fixture("no-for-loop");
+        assert!(has_violation(&violations, "no-for-loop"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_for_loop_allows_valid() {
+        let violations = parse_ts_fixture("valid-for-loop");
+        assert!(!has_violation(&violations, "no-for-loop"));
     }
 
     #[test]
