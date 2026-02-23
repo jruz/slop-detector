@@ -1,6 +1,6 @@
 # Slop Detector
 
-Linter for detecting AI generated slop in CSS, Gleam, JS/TS, Rust, and OpenTofu code.
+Linter for detecting AI generated slop in CSS, Gleam, JS/TS, Just, Rust, and OpenTofu code.
 
 ## Installation
 
@@ -15,6 +15,7 @@ slop-detector          # Check all languages
 slop-detector css      # Check CSS only
 slop-detector gleam    # Check Gleam only
 slop-detector js       # Check JS/TS only
+slop-detector just     # Check Just only
 slop-detector rust     # Check Rust only
 slop-detector tofu     # Check OpenTofu only
 ```
@@ -66,6 +67,9 @@ slop-detector --create-config-for-violations
 - `no-silent-defaults` - Avoid `x || []`, `x ?? {}` patterns
 - `no-stderr-write` - Avoid writing to stderr
 - `no-stdout-write` - Use console.log instead of process.stdout.write
+
+### Just
+- `no-recipe-deps` - Call dependencies explicitly with `just <recipe>` in the body
 
 ### Rust
 - `no-allow-attr` - Refactor instead of suppressing lints

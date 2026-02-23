@@ -1,0 +1,201 @@
+use std::fs;
+
+use tree_sitter::{Node, Parser, Tree};
+
+use crate::files::find_files;
+use crate::types::{AppError, CheckResult, Violation};
+
+const EXCLUDES: &[&str] = &["build", "fixtures"];
+const PATTERNS: &[&str] = &["justfile", "*.just"];
+
+struct Rule {
+    check: fn(source: &str, tree: &Tree) -> Vec<String>,
+    hint: Option<&'static str>,
+    name: &'static str,
+}
+
+const RULES: &[Rule] = &[Rule {
+    check: check_no_recipe_deps,
+    hint: Some("call dependencies explicitly with `just <recipe>` in the body"),
+    name: "no-recipe-deps",
+}];
+
+struct ParsedJust {
+    path: String,
+    source: String,
+    tree: Tree,
+}
+
+fn create_parser() -> Result<Parser, tree_sitter::LanguageError> {
+    let mut parser = Parser::new();
+    parser.set_language(&tree_sitter_just::language())?;
+    Ok(parser)
+}
+
+fn find_recipes<'tree>(node: Node<'tree>, recipes: &mut Vec<Node<'tree>>) {
+    if node.kind() == "recipe" {
+        recipes.push(node);
+    }
+    for child in node.children(&mut node.walk()) {
+        find_recipes(child, recipes);
+    }
+}
+
+fn recipe_name<'tree>(
+    recipe: Node<'tree>,
+    source: &'tree [u8],
+) -> Result<Option<&'tree str>, std::str::Utf8Error> {
+    for child in recipe.children(&mut recipe.walk()) {
+        if child.kind() == "recipe_header" {
+            for header_child in child.children(&mut child.walk()) {
+                if header_child.kind() == "identifier" {
+                    return Ok(Some(header_child.utf8_text(source)?));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn has_dependencies(recipe: Node<'_>) -> bool {
+    for child in recipe.children(&mut recipe.walk()) {
+        if child.kind() == "recipe_header" {
+            for header_child in child.children(&mut child.walk()) {
+                if header_child.kind() == "dependencies" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn check_no_recipe_deps(source: &str, tree: &Tree) -> Vec<String> {
+    let source_bytes = source.as_bytes();
+    let mut recipes = Vec::new();
+    find_recipes(tree.root_node(), &mut recipes);
+
+    let mut errors = Vec::new();
+    for recipe in recipes {
+        if has_dependencies(recipe) {
+            let line = recipe.start_position().row + 1;
+            match recipe_name(recipe, source_bytes) {
+                Ok(Some(name)) => {
+                    errors.push(format!("line {line}: recipe `{name}` uses dependencies"));
+                }
+                Ok(None) => {
+                    errors.push(format!("line {line}: recipe uses dependencies"));
+                }
+                Err(utf8_err) => {
+                    errors.push(format!("UTF-8 error: {utf8_err}"));
+                }
+            }
+        }
+    }
+    errors
+}
+
+fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
+    match find_files(patterns, excludes) {
+        Ok(found) => (found, vec![]),
+        Err(err) => (
+            vec![],
+            vec![AppError::Glob {
+                pattern: patterns.join(", "),
+                message: err.to_string(),
+            }],
+        ),
+    }
+}
+
+fn parse(paths: Vec<String>, parser: &mut Parser) -> (Vec<ParsedJust>, Vec<AppError>) {
+    let mut parsed = Vec::new();
+    let mut errors = Vec::new();
+
+    for path in paths {
+        match fs::read_to_string(&path) {
+            Ok(source) => match parser.parse(&source, None) {
+                Some(tree) => parsed.push(ParsedJust { path, source, tree }),
+                None => errors.push(AppError::Parse {
+                    file: path,
+                    message: "failed to parse".to_string(),
+                }),
+            },
+            Err(err) => errors.push(AppError::Read {
+                file: path,
+                message: err.to_string(),
+            }),
+        }
+    }
+
+    (parsed, errors)
+}
+
+fn run_rules(files: &[ParsedJust], rules: &[Rule]) -> Vec<Violation> {
+    files
+        .iter()
+        .flat_map(|file| {
+            rules.iter().filter_map(|rule| {
+                let errors = (rule.check)(&file.source, &file.tree);
+                if errors.is_empty() {
+                    return None;
+                }
+                Some(Violation {
+                    errors,
+                    file: file.path.clone(),
+                    hint: rule.hint.map(String::from),
+                    rule: rule.name.to_string(),
+                })
+            })
+        })
+        .collect()
+}
+
+pub fn check() -> CheckResult {
+    let (paths, mut errors) = find(PATTERNS, EXCLUDES);
+    let (parsed, parse_errors) = match create_parser() {
+        Ok(mut parser) => parse(paths, &mut parser),
+        Err(err) => {
+            errors.push(AppError::Parse {
+                file: "just".to_string(),
+                message: err.to_string(),
+            });
+            (Vec::new(), Vec::new())
+        }
+    };
+    errors.extend(parse_errors);
+    let violations = run_rules(&parsed, RULES);
+
+    CheckResult {
+        errors,
+        file_count: parsed.len(),
+        violations,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_fixture(name: &str) -> (String, Tree) {
+        let path = format!("fixtures/just/{name}.just");
+        let source = fs::read_to_string(&path).expect("fixture should exist");
+        let mut parser = create_parser().expect("parser should load");
+        let tree = parser.parse(&source, None).expect("should parse");
+        (source, tree)
+    }
+
+    #[test]
+    fn no_recipe_deps_detects_violation() {
+        let (source, tree) = parse_fixture("no-recipe-deps");
+        let errors = check_no_recipe_deps(&source, &tree);
+        assert_eq!(errors.len(), 2);
+    }
+
+    #[test]
+    fn no_recipe_deps_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-recipe-deps");
+        let errors = check_no_recipe_deps(&source, &tree);
+        assert!(errors.is_empty());
+    }
+}

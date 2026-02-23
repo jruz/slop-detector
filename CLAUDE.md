@@ -1,6 +1,6 @@
 # Slop Detector
 
-Linter for detecting AI generated slop in CSS, Gleam, JS/TS, Rust, and OpenTofu code.
+Linter for detecting AI generated slop in CSS, Gleam, JS/TS, Just, Rust, and OpenTofu code.
 
 ## Environment
 
@@ -20,6 +20,7 @@ src/
     ├── css.rs       # CSS rules (lightningcss parser)
     ├── gleam.rs     # Gleam rules (tree-sitter + toml parser)
     ├── js.rs        # JS/TS rules (oxc parser)
+    ├── just.rs      # Just rules (tree-sitter parser)
     ├── rust.rs      # Rust rules (ra_ap_syntax parser)
     └── tofu.rs      # OpenTofu rules (hcl-rs parser)
 ```
