@@ -14,11 +14,20 @@ struct Rule {
     name: &'static str,
 }
 
-const RULES: &[Rule] = &[Rule {
-    check: check_no_recipe_deps,
-    hint: Some("call dependencies explicitly with `just <recipe>` in the body"),
-    name: "no-recipe-deps",
-}];
+const BANNED_SHEBANGS: &[&str] = &["bash", "sh"];
+
+const RULES: &[Rule] = &[
+    Rule {
+        check: check_no_bash_shebang,
+        hint: Some("use `#!/usr/bin/env nu` instead"),
+        name: "no-bash-shebang",
+    },
+    Rule {
+        check: check_no_recipe_deps,
+        hint: Some("call dependencies explicitly with `just <recipe>` in the body"),
+        name: "no-recipe-deps",
+    },
+];
 
 struct ParsedJust {
     path: String,
@@ -68,6 +77,58 @@ fn has_dependencies(recipe: Node<'_>) -> bool {
         }
     }
     false
+}
+
+fn shebang_language<'tree>(
+    recipe: Node<'tree>,
+    source: &'tree [u8],
+) -> Result<Option<(usize, &'tree str)>, std::str::Utf8Error> {
+    for child in recipe.children(&mut recipe.walk()) {
+        if child.kind() == "recipe_body" {
+            for body_child in child.children(&mut child.walk()) {
+                if body_child.kind() == "shebang" {
+                    for shebang_child in body_child.children(&mut body_child.walk()) {
+                        if shebang_child.kind() == "language" {
+                            let line = body_child.start_position().row + 1;
+                            let lang = shebang_child.utf8_text(source)?;
+                            return Ok(Some((line, lang)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn check_no_bash_shebang(source: &str, tree: &Tree) -> Vec<String> {
+    let source_bytes = source.as_bytes();
+    let mut recipes = Vec::new();
+    find_recipes(tree.root_node(), &mut recipes);
+
+    let mut errors = Vec::new();
+    for recipe in recipes {
+        match shebang_language(recipe, source_bytes) {
+            Ok(Some((line, lang))) if BANNED_SHEBANGS.contains(&lang) => {
+                match recipe_name(recipe, source_bytes) {
+                    Ok(Some(name)) => {
+                        errors.push(format!("line {line}: recipe `{name}` uses {lang} shebang"));
+                    }
+                    Ok(None) => {
+                        errors.push(format!("line {line}: recipe uses {lang} shebang"));
+                    }
+                    Err(utf8_err) => {
+                        errors.push(format!("UTF-8 error: {utf8_err}"));
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(utf8_err) => {
+                errors.push(format!("UTF-8 error: {utf8_err}"));
+            }
+        }
+    }
+    errors
 }
 
 fn check_no_recipe_deps(source: &str, tree: &Tree) -> Vec<String> {
@@ -183,6 +244,20 @@ mod tests {
         let mut parser = create_parser().expect("parser should load");
         let tree = parser.parse(&source, None).expect("should parse");
         (source, tree)
+    }
+
+    #[test]
+    fn no_bash_shebang_detects_violation() {
+        let (source, tree) = parse_fixture("no-bash-shebang");
+        let errors = check_no_bash_shebang(&source, &tree);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_bash_shebang_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-bash-shebang");
+        let errors = check_no_bash_shebang(&source, &tree);
+        assert!(errors.is_empty());
     }
 
     #[test]

@@ -69,6 +69,7 @@ slop-detector --create-config-for-violations
 - `no-stdout-write` - Use console.log instead of process.stdout.write
 
 ### Just
+- `no-bash-shebang` - Use nushell instead of bash/sh shebangs
 - `no-recipe-deps` - Call dependencies explicitly with `just <recipe>` in the body
 
 ### Rust
