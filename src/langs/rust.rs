@@ -170,6 +170,11 @@ const RULES: &[Rule] = &[
         name: "no-while-let-ok",
     },
     Rule {
+        check: check_no_inline_style,
+        hint: Some("use CSS classes instead of inline styles"),
+        name: "no-inline-style",
+    },
+    Rule {
         check: check_no_swallowed_err,
         hint: Some("Err matched but not returned - error is being swallowed"),
         name: "no-swallowed-err",
@@ -846,6 +851,36 @@ fn has_expect(expr_str: &str) -> bool {
     expr_str.contains(".expect(")
 }
 
+fn check_no_inline_style(source: &str, ast: &SourceFile) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::MACRO_CALL {
+                return None;
+            }
+            let tokens: Vec<_> = node
+                .descendants_with_tokens()
+                .filter_map(ra_ap_syntax::NodeOrToken::into_token)
+                .collect();
+            let found: Vec<_> = tokens
+                .iter()
+                .zip(tokens.iter().skip(1))
+                .filter(|(ident, eq)| {
+                    ident.kind() == SyntaxKind::IDENT
+                        && ident.text() == "style"
+                        && eq.kind() == SyntaxKind::EQ
+                })
+                .map(|(ident, _)| {
+                    let line = line_number(source, ident.text_range().start().into());
+                    format!("line {line}: style=")
+                })
+                .collect();
+            if found.is_empty() { None } else { Some(found) }
+        })
+        .flatten()
+        .collect()
+}
+
 fn check_no_swallowed_err(source: &str, ast: &SourceFile) -> Vec<String> {
     ast.syntax()
         .descendants()
@@ -1515,6 +1550,20 @@ mod tests {
     fn no_swallowed_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-swallowed-err");
         let errors = check_no_swallowed_err(&source, &ast);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_inline_style_detects_violation() {
+        let (source, ast) = parse_fixture("no-inline-style");
+        let errors = check_no_inline_style(&source, &ast);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_inline_style_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-inline-style");
+        let errors = check_no_inline_style(&source, &ast);
         assert!(errors.is_empty());
     }
 
