@@ -16,11 +16,41 @@ struct Rule {
 
 const BANNED_SHEBANGS: &[&str] = &["bash", "sh"];
 
+const KNOWN_EXTERNALS: &[&str] = &[
+    "bun",
+    "bunx",
+    "cargo",
+    "chmod",
+    "claude",
+    "deno",
+    "direnv",
+    "docker",
+    "fd",
+    "git",
+    "gleam",
+    "just",
+    "npm",
+    "npx",
+    "postgres",
+    "scp",
+    "sh",
+    "sops",
+    "ssh",
+    "ssh-keygen",
+    "sqlx",
+    "tail",
+];
+
 const RULES: &[Rule] = &[
     Rule {
         check: check_no_bash_shebang,
         hint: Some("use `#!/usr/bin/env nu` instead"),
         name: "no-bash-shebang",
+    },
+    Rule {
+        check: check_no_external_without_caret,
+        hint: Some("use `^command` to mark external commands in nu recipes"),
+        name: "no-external-without-caret",
     },
     Rule {
         check: check_no_recipe_deps,
@@ -99,6 +129,79 @@ fn shebang_language<'tree>(
         }
     }
     Ok(None)
+}
+
+fn is_nu_recipe(recipe: Node<'_>, source: &[u8]) -> bool {
+    matches!(shebang_language(recipe, source), Ok(Some((_, "nu"))))
+}
+
+fn recipe_body_lines<'tree>(recipe: Node<'tree>, source: &'tree [u8]) -> Vec<(usize, &'tree str)> {
+    let mut lines = Vec::new();
+    for child in recipe.children(&mut recipe.walk()) {
+        if child.kind() != "recipe_body" {
+            continue;
+        }
+        for body_child in child.children(&mut child.walk()) {
+            if body_child.kind() != "recipe_line" {
+                continue;
+            }
+            let line_num = body_child.start_position().row + 1;
+            for line_child in body_child.children(&mut body_child.walk()) {
+                if line_child.kind() == "text"
+                    && let Ok(text) = line_child.utf8_text(source)
+                {
+                    lines.push((line_num, text));
+                }
+            }
+        }
+    }
+    lines
+}
+
+fn first_token(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let token = trimmed.split_whitespace().next()?;
+    Some(token)
+}
+
+fn check_no_external_without_caret(source: &str, tree: &Tree) -> Vec<String> {
+    let source_bytes = source.as_bytes();
+    let mut recipes = Vec::new();
+    find_recipes(tree.root_node(), &mut recipes);
+
+    let mut errors = Vec::new();
+    for recipe in &recipes {
+        if !is_nu_recipe(*recipe, source_bytes) {
+            continue;
+        }
+        for (line_num, text) in recipe_body_lines(*recipe, source_bytes) {
+            let Some(token) = first_token(text) else {
+                continue;
+            };
+            if KNOWN_EXTERNALS.contains(&token) {
+                let name = recipe_name(*recipe, source_bytes);
+                match name {
+                    Ok(Some(rname)) => {
+                        errors.push(format!(
+                            "line {line_num}: recipe `{rname}` calls `{token}` without `^`"
+                        ));
+                    }
+                    Ok(None) => {
+                        errors.push(format!(
+                            "line {line_num}: recipe calls `{token}` without `^`"
+                        ));
+                    }
+                    Err(utf8_err) => {
+                        errors.push(format!("UTF-8 error: {utf8_err}"));
+                    }
+                }
+            }
+        }
+    }
+    errors
 }
 
 fn check_no_bash_shebang(source: &str, tree: &Tree) -> Vec<String> {
@@ -257,6 +360,20 @@ mod tests {
     fn no_bash_shebang_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-bash-shebang");
         let errors = check_no_bash_shebang(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_external_without_caret_detects_violation() {
+        let (source, tree) = parse_fixture("no-external-without-caret");
+        let errors = check_no_external_without_caret(&source, &tree);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_external_without_caret_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-external-without-caret");
+        let errors = check_no_external_without_caret(&source, &tree);
         assert!(errors.is_empty());
     }
 

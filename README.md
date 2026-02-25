@@ -70,6 +70,7 @@ slop-detector --create-config-for-violations
 
 ### Just
 - `no-bash-shebang` - Use nushell instead of bash/sh shebangs
+- `no-external-without-caret` - Use `^command` to mark external commands in nu recipes
 - `no-recipe-deps` - Call dependencies explicitly with `just <recipe>` in the body
 
 ### Rust
