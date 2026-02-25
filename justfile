@@ -65,7 +65,7 @@ rust-upgrade:
 
 nu-check:
     #!/usr/bin/env nu
-    fd --absolute-path --extension nu --exec nu --commands 'nu-check --debug {}'
+    ^fd --absolute-path --extension nu --exec nu --commands 'nu-check --debug {}'
     nu-lint --config nu-lint.toml
 
 nu-fix:
@@ -121,7 +121,7 @@ ci-build-linux:
         --volume $"(pwd):/work"
         --workdir /work
         127.0.0.1:5000/woodpecker-job:v0.0.13
-        sh -c ". /entrypoint.sh && nix develop --command just build-linux")
+        ^sh -c ". /entrypoint.sh && nix develop --command just build-linux")
 
 ci-build-macos:
     #!/usr/bin/env nu
@@ -130,7 +130,7 @@ ci-build-macos:
         --volume $"(pwd):/work"
         --workdir /work
         ghcr.io/rust-cross/cargo-zigbuild
-        sh -c "cargo install just && just build-macos")
+        ^sh -c "cargo install just && just build-macos")
 
 ci-build-windows:
     #!/usr/bin/env nu
@@ -139,7 +139,7 @@ ci-build-windows:
         --volume $"(pwd):/work"
         --workdir /work
         ghcr.io/rust-cross/cargo-xwin
-        sh -c "cargo install just && just build-windows")
+        ^sh -c "cargo install just && just build-windows")
 
 ci-check:
     #!/usr/bin/env nu
@@ -148,7 +148,7 @@ ci-check:
         --volume $"(pwd):/work"
         --workdir /work
         127.0.0.1:5000/woodpecker-job:v0.0.13
-        sh -c ". /entrypoint.sh && nix develop --command just check")
+        ^sh -c ". /entrypoint.sh && nix develop --command just check")
 
 # ---------------- INSTALL
 
@@ -162,9 +162,9 @@ release-tag:
     let version = (open Cargo.toml | get package.version)
     let tag = $"v($version)"
     print $"Tagging ($tag)..."
-    git tag --sign $tag --message $tag
+    ^git tag --sign $tag --message $tag
     print $"Pushing ($tag)..."
-    git push origin $tag
+    ^git push origin $tag
     print $"(ansi green)OK: Pushed signed tag ($tag)(ansi reset)"
 
 release-upload tag:
