@@ -379,7 +379,11 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
             visitor.silent_default_errors,
             Some("use Result or Option instead of silent defaults"),
         ),
-        ("no-console", visitor.console_errors, Some("move to main()")),
+        (
+            "no-console",
+            visitor.console_errors,
+            Some("use log.ts or tracing.ts"),
+        ),
         (
             "no-stderr-write",
             visitor.stderr_write_errors,
