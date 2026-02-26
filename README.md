@@ -47,6 +47,8 @@ slop-detector --create-config-for-violations
 
 ### Elixir
 - `no-inline-style` - Use CSS classes instead of inline styles
+- `pinned-dep-versions` - Pin dependency versions in mix.exs
+- `pinned-elixir-version` - Pin to exact matching the flake
 
 ### Gleam
 - `exact-versions` - Pin dependency versions in gleam.toml
