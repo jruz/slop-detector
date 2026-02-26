@@ -392,7 +392,7 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
         (
             "no-stdout-write",
             visitor.stdout_write_errors,
-            Some("use console.log instead"),
+            Some("use log.ts"),
         ),
     ];
 

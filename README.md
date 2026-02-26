@@ -72,7 +72,7 @@ slop-detector --create-config-for-violations
 - `no-scripts-section` - No scripts in package.json
 - `no-silent-defaults` - Avoid `x || []`, `x ?? {}` patterns
 - `no-stderr-write` - Avoid writing to stderr
-- `no-stdout-write` - Use console.log instead of process.stdout.write
+- `no-stdout-write` - Use log.ts
 
 ### Just
 - `no-bash-shebang` - Use nushell instead of bash/sh shebangs
