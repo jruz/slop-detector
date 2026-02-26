@@ -1,6 +1,6 @@
 # Slop Detector
 
-Linter for detecting AI generated slop in CSS, Gleam, JS/TS, Just, Rust, and OpenTofu code.
+Linter for detecting AI generated slop in CSS, Elixir, Gleam, JS/TS, Just, Rust, and OpenTofu code.
 
 ## Installation
 
@@ -13,6 +13,7 @@ cargo install --git https://codeberg.org/jruz/slop-detector
 ```bash
 slop-detector          # Check all languages
 slop-detector css      # Check CSS only
+slop-detector elixir   # Check Elixir only
 slop-detector gleam    # Check Gleam only
 slop-detector js       # Check JS/TS only
 slop-detector just     # Check Just only
@@ -43,6 +44,9 @@ slop-detector --create-config-for-violations
 
 ### CSS
 - `no-stylelint-disable` - Fix the violation instead of disabling the rule
+
+### Elixir
+- `no-inline-style` - Use CSS classes instead of inline styles
 
 ### Gleam
 - `exact-versions` - Pin dependency versions in gleam.toml
