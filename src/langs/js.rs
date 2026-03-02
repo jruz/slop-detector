@@ -201,6 +201,7 @@ fn get_callee_text(expr: &oxc::ast::ast::CallExpression<'_>) -> String {
 
 struct TsVisitor<'src> {
     array_as_const_errors: Vec<String>,
+    satisfies_errors: Vec<String>,
     console_errors: Vec<String>,
     for_loop_errors: Vec<String>,
     inside_main: bool,
@@ -320,6 +321,12 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         walk::walk_ts_as_expression(self, expr);
     }
 
+    fn visit_ts_satisfies_expression(&mut self, expr: &oxc::ast::ast::TSSatisfiesExpression<'src>) {
+        let line = line_number(self.source, expr.span.start);
+        self.satisfies_errors.push(format!("line {line}"));
+        walk::walk_ts_satisfies_expression(self, expr);
+    }
+
     fn visit_for_statement(&mut self, stmt: &oxc::ast::ast::ForStatement<'src>) {
         let line = line_number(self.source, stmt.span.start);
         self.for_loop_errors.push(format!("line {line}: for"));
@@ -357,6 +364,11 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
         (
             "no-array-as-const",
             visitor.array_as_const_errors,
+            Some("declare the type instead"),
+        ),
+        (
+            "no-satisfies",
+            visitor.satisfies_errors,
             Some("declare the type instead"),
         ),
         (
@@ -415,6 +427,7 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
 fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
     TsVisitor {
         array_as_const_errors: Vec::new(),
+        satisfies_errors: Vec::new(),
         console_errors: Vec::new(),
         for_loop_errors: Vec::new(),
         inside_main: false,
@@ -530,6 +543,19 @@ mod tests {
     fn no_array_as_const_allows_valid() {
         let violations = parse_ts_fixture("valid-array-as-const");
         assert!(!has_violation(&violations, "no-array-as-const"));
+    }
+
+    #[test]
+    fn no_satisfies_detects_violation() {
+        let violations = parse_ts_fixture("no-satisfies");
+        assert!(has_violation(&violations, "no-satisfies"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_satisfies_allows_valid() {
+        let violations = parse_ts_fixture("valid-satisfies");
+        assert!(!has_violation(&violations, "no-satisfies"));
     }
 
     #[test]
