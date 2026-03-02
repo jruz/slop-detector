@@ -11,7 +11,7 @@ const PATTERNS: &[&str] = &["*.rs"];
 const CARGO_TOML_PATTERNS: &[&str] = &["Cargo.toml"];
 
 struct Rule {
-    check: fn(source: &str, ast: &SourceFile) -> Vec<String>,
+    check: fn(source: &str, ast: &SourceFile, path: &str) -> Vec<String>,
     hint: Option<&'static str>,
     name: &'static str,
 }
@@ -239,7 +239,7 @@ fn check_pinned_versions(toml: &toml::Value) -> Vec<String> {
 
 const ALLOW_ATTR: &str = "allow";
 
-fn check_no_allow_attr(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_allow_attr(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -257,7 +257,7 @@ fn check_no_allow_attr(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_catch_unwind(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_catch_unwind(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -279,7 +279,7 @@ fn check_no_catch_unwind(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_cfg_attr_suppress(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_cfg_attr_suppress(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -312,7 +312,7 @@ fn is_call_expr(expr: &ast::Expr) -> bool {
     )
 }
 
-fn check_no_discard_result(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_discard_result(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -350,7 +350,7 @@ fn check_no_discard_result(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_drop_result(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_drop_result(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -373,7 +373,7 @@ fn check_no_drop_result(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_expect_attr(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_expect_attr(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -410,7 +410,14 @@ fn is_inside_test_module(node: &ra_ap_syntax::SyntaxNode) -> bool {
     })
 }
 
-fn check_no_expect_outside_tests(source: &str, ast: &SourceFile) -> Vec<String> {
+fn is_integration_test(path: &str) -> bool {
+    path.contains("/tests/") || path.starts_with("tests/") || path.starts_with("./tests/")
+}
+
+fn check_no_expect_outside_tests(source: &str, ast: &SourceFile, path: &str) -> Vec<String> {
+    if is_integration_test(path) {
+        return vec![];
+    }
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -431,7 +438,7 @@ fn check_no_expect_outside_tests(source: &str, ast: &SourceFile) -> Vec<String> 
         .collect()
 }
 
-fn check_no_if_let_ok_without_else(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_if_let_ok_without_else(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -457,7 +464,7 @@ fn check_no_if_let_ok_without_else(source: &str, ast: &SourceFile) -> Vec<String
         .collect()
 }
 
-fn check_no_let_ok_else_continue(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_let_ok_else_continue(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -482,7 +489,7 @@ fn check_no_let_ok_else_continue(source: &str, ast: &SourceFile) -> Vec<String> 
         .collect()
 }
 
-fn check_no_impl(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_impl(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -503,7 +510,7 @@ fn check_no_impl(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_is_ok_is_err(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_is_ok_is_err(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -521,7 +528,7 @@ fn check_no_is_ok_is_err(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_map_discard(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_map_discard(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -558,7 +565,7 @@ fn has_discarded_closure_param(arg_str: &str) -> bool {
     chars.peek() == Some(&'_')
 }
 
-fn check_no_map_err_discard(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_map_err_discard(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -582,11 +589,11 @@ fn check_no_map_err_discard(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_map_or_else(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_map_or_else(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     check_method_call(source, ast, "map_or_else")
 }
 
-fn check_no_mem_forget(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_mem_forget(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -605,7 +612,7 @@ fn check_no_mem_forget(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_ok_and_propagate(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_ok_and_propagate(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -627,7 +634,7 @@ fn check_no_ok_and_propagate(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_ok_method(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_ok_method(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -645,7 +652,7 @@ fn check_no_ok_method(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_trait_impl(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_trait_impl(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -730,7 +737,7 @@ fn extract_format_placeholders(format_str: &str) -> Vec<String> {
     placeholders
 }
 
-fn check_thiserror_unused_fields(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_thiserror_unused_fields(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     let mut errors = Vec::new();
 
     for node in ast.syntax().descendants() {
@@ -782,23 +789,23 @@ fn check_thiserror_unused_fields(source: &str, ast: &SourceFile) -> Vec<String> 
     errors
 }
 
-fn check_no_unwrap_err(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_unwrap_err(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     check_method_call(source, ast, "unwrap_err")
 }
 
-fn check_no_unwrap_or(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_unwrap_or(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     check_method_call(source, ast, "unwrap_or")
 }
 
-fn check_no_unwrap_or_default(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_unwrap_or_default(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     check_method_call(source, ast, "unwrap_or_default")
 }
 
-fn check_no_unwrap_or_else(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_unwrap_or_else(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     check_method_call(source, ast, "unwrap_or_else")
 }
 
-fn check_no_unwrap_unchecked(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_unwrap_unchecked(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     check_method_call(source, ast, "unwrap_unchecked")
 }
 
@@ -820,7 +827,7 @@ fn check_method_call(source: &str, ast: &SourceFile, method: &str) -> Vec<String
         .collect()
 }
 
-fn check_no_unit_error(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_unit_error(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -840,7 +847,7 @@ fn check_no_unit_error(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_while_let_ok(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_while_let_ok(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -878,7 +885,7 @@ fn has_expect(expr_str: &str) -> bool {
     expr_str.contains(".expect(")
 }
 
-fn check_no_inline_style(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_inline_style(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -908,7 +915,7 @@ fn check_no_inline_style(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_swallowed_err(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_swallowed_err(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -948,7 +955,7 @@ fn is_inside_main(node: &ra_ap_syntax::SyntaxNode) -> bool {
     })
 }
 
-fn check_no_print_outside_main(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_print_outside_main(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -969,7 +976,7 @@ fn check_no_print_outside_main(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_return_ok(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_return_ok(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -988,11 +995,11 @@ fn check_no_return_ok(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
-fn check_no_spawn(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_spawn(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     check_method_call(source, ast, "spawn")
 }
 
-fn check_no_stderr_null(source: &str, ast: &SourceFile) -> Vec<String> {
+fn check_no_stderr_null(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
         .filter_map(|node| {
@@ -1089,7 +1096,7 @@ fn run_rules(files: &[ParsedFile], rules: &[Rule]) -> Vec<Violation> {
         .iter()
         .flat_map(|file| {
             rules.iter().filter_map(|rule| {
-                let errors = (rule.check)(&file.source, &file.ast);
+                let errors = (rule.check)(&file.source, &file.ast, &file.path);
                 if errors.is_empty() {
                     return None;
                 }
@@ -1177,434 +1184,441 @@ mod tests {
     #[test]
     fn no_allow_attr_detects_violation() {
         let (source, ast) = parse_fixture("no-allow-attr");
-        let errors = check_no_allow_attr(&source, &ast);
+        let errors = check_no_allow_attr(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_allow_attr_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-attrs");
-        let errors = check_no_allow_attr(&source, &ast);
+        let errors = check_no_allow_attr(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_catch_unwind_detects_violation() {
         let (source, ast) = parse_fixture("no-catch-unwind");
-        let errors = check_no_catch_unwind(&source, &ast);
+        let errors = check_no_catch_unwind(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_catch_unwind_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-catch-unwind");
-        let errors = check_no_catch_unwind(&source, &ast);
+        let errors = check_no_catch_unwind(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_cfg_attr_suppress_detects_violation() {
         let (source, ast) = parse_fixture("no-cfg-attr-suppress");
-        let errors = check_no_cfg_attr_suppress(&source, &ast);
+        let errors = check_no_cfg_attr_suppress(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_cfg_attr_suppress_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-attrs");
-        let errors = check_no_cfg_attr_suppress(&source, &ast);
+        let errors = check_no_cfg_attr_suppress(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_discard_result_detects_violation() {
         let (source, ast) = parse_fixture("no-discard-result");
-        let errors = check_no_discard_result(&source, &ast);
+        let errors = check_no_discard_result(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 2);
     }
 
     #[test]
     fn no_discard_result_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-discard-result");
-        let errors = check_no_discard_result(&source, &ast);
+        let errors = check_no_discard_result(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_drop_result_detects_violation() {
         let (source, ast) = parse_fixture("no-drop-result");
-        let errors = check_no_drop_result(&source, &ast);
+        let errors = check_no_drop_result(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_drop_result_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-drop-result");
-        let errors = check_no_drop_result(&source, &ast);
+        let errors = check_no_drop_result(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_expect_attr_detects_violation() {
         let (source, ast) = parse_fixture("no-expect-attr");
-        let errors = check_no_expect_attr(&source, &ast);
+        let errors = check_no_expect_attr(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_expect_attr_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-attrs");
-        let errors = check_no_expect_attr(&source, &ast);
+        let errors = check_no_expect_attr(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_expect_outside_tests_detects_violation() {
         let (source, ast) = parse_fixture("no-expect-outside-tests");
-        let errors = check_no_expect_outside_tests(&source, &ast);
+        let errors = check_no_expect_outside_tests(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_expect_outside_tests_allows_valid() {
         let (source, ast) = parse_fixture("valid-expect-in-tests");
-        let errors = check_no_expect_outside_tests(&source, &ast);
+        let errors = check_no_expect_outside_tests(&source, &ast, "src/main.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_expect_outside_tests_allows_integration_tests() {
+        let (source, ast) = parse_fixture("no-expect-outside-tests");
+        let errors = check_no_expect_outside_tests(&source, &ast, "tests/integration.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_if_let_ok_without_else_detects_violation() {
         let (source, ast) = parse_fixture("no-if-let-ok-without-else");
-        let errors = check_no_if_let_ok_without_else(&source, &ast);
+        let errors = check_no_if_let_ok_without_else(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_if_let_ok_without_else_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-if-let-ok-without-else");
-        let errors = check_no_if_let_ok_without_else(&source, &ast);
+        let errors = check_no_if_let_ok_without_else(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_let_ok_else_continue_detects_violation() {
         let (source, ast) = parse_fixture("no-let-ok-else-continue");
-        let errors = check_no_let_ok_else_continue(&source, &ast);
+        let errors = check_no_let_ok_else_continue(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_let_ok_else_continue_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-let-ok-else-continue");
-        let errors = check_no_let_ok_else_continue(&source, &ast);
+        let errors = check_no_let_ok_else_continue(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_impl_detects_violation() {
         let (source, ast) = parse_fixture("no-impl");
-        let errors = check_no_impl(&source, &ast);
+        let errors = check_no_impl(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_is_ok_is_err_detects_violation() {
         let (source, ast) = parse_fixture("no-is-ok-is-err");
-        let errors = check_no_is_ok_is_err(&source, &ast);
+        let errors = check_no_is_ok_is_err(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_is_ok_is_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-is-ok-is-err");
-        let errors = check_no_is_ok_is_err(&source, &ast);
+        let errors = check_no_is_ok_is_err(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_map_discard_detects_violation() {
         let (source, ast) = parse_fixture("no-map-discard");
-        let errors = check_no_map_discard(&source, &ast);
+        let errors = check_no_map_discard(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_map_discard_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-map-discard");
-        let errors = check_no_map_discard(&source, &ast);
+        let errors = check_no_map_discard(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_map_err_discard_detects_violation() {
         let (source, ast) = parse_fixture("no-map-err-discard");
-        let errors = check_no_map_err_discard(&source, &ast);
+        let errors = check_no_map_err_discard(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 2);
     }
 
     #[test]
     fn no_map_err_discard_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-map-err-discard");
-        let errors = check_no_map_err_discard(&source, &ast);
+        let errors = check_no_map_err_discard(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_map_or_else_detects_violation() {
         let (source, ast) = parse_fixture("no-map-or-else");
-        let errors = check_no_map_or_else(&source, &ast);
+        let errors = check_no_map_or_else(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_map_or_else_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-map-or-else");
-        let errors = check_no_map_or_else(&source, &ast);
+        let errors = check_no_map_or_else(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_mem_forget_detects_violation() {
         let (source, ast) = parse_fixture("no-mem-forget");
-        let errors = check_no_mem_forget(&source, &ast);
+        let errors = check_no_mem_forget(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_mem_forget_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-mem-forget");
-        let errors = check_no_mem_forget(&source, &ast);
+        let errors = check_no_mem_forget(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_ok_and_propagate_detects_violation() {
         let (source, ast) = parse_fixture("no-ok-and-propagate");
-        let errors = check_no_ok_and_propagate(&source, &ast);
+        let errors = check_no_ok_and_propagate(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_ok_and_propagate_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-ok-and-propagate");
-        let errors = check_no_ok_and_propagate(&source, &ast);
+        let errors = check_no_ok_and_propagate(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_ok_method_detects_violation() {
         let (source, ast) = parse_fixture("no-ok-method");
-        let errors = check_no_ok_method(&source, &ast);
+        let errors = check_no_ok_method(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_ok_method_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-ok-method");
-        let errors = check_no_ok_method(&source, &ast);
+        let errors = check_no_ok_method(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_trait_impl_detects_violation() {
         let (source, ast) = parse_fixture("no-trait-impl");
-        let errors = check_no_trait_impl(&source, &ast);
+        let errors = check_no_trait_impl(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_print_outside_main_detects_violation() {
         let (source, ast) = parse_fixture("no-print-outside-main");
-        let errors = check_no_print_outside_main(&source, &ast);
+        let errors = check_no_print_outside_main(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_print_outside_main_allows_valid() {
         let (source, ast) = parse_fixture("valid-print-in-main");
-        let errors = check_no_print_outside_main(&source, &ast);
+        let errors = check_no_print_outside_main(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_return_ok_detects_violation() {
         let (source, ast) = parse_fixture("no-return-ok");
-        let errors = check_no_return_ok(&source, &ast);
+        let errors = check_no_return_ok(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_return_ok_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-return-ok");
-        let errors = check_no_return_ok(&source, &ast);
+        let errors = check_no_return_ok(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_spawn_detects_violation() {
         let (source, ast) = parse_fixture("no-spawn");
-        let errors = check_no_spawn(&source, &ast);
+        let errors = check_no_spawn(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_spawn_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-spawn");
-        let errors = check_no_spawn(&source, &ast);
+        let errors = check_no_spawn(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_stderr_null_detects_violation() {
         let (source, ast) = parse_fixture("no-stderr-null");
-        let errors = check_no_stderr_null(&source, &ast);
+        let errors = check_no_stderr_null(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_stderr_null_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-stderr-null");
-        let errors = check_no_stderr_null(&source, &ast);
+        let errors = check_no_stderr_null(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_unwrap_err_detects_violation() {
         let (source, ast) = parse_fixture("no-unwrap-err");
-        let errors = check_no_unwrap_err(&source, &ast);
+        let errors = check_no_unwrap_err(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_unwrap_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
-        let errors = check_no_unwrap_err(&source, &ast);
+        let errors = check_no_unwrap_err(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_unwrap_or_detects_violation() {
         let (source, ast) = parse_fixture("no-unwrap-or");
-        let errors = check_no_unwrap_or(&source, &ast);
+        let errors = check_no_unwrap_or(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_unwrap_or_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
-        let errors = check_no_unwrap_or(&source, &ast);
+        let errors = check_no_unwrap_or(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_unwrap_or_default_detects_violation() {
         let (source, ast) = parse_fixture("no-unwrap-or-default");
-        let errors = check_no_unwrap_or_default(&source, &ast);
+        let errors = check_no_unwrap_or_default(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_unwrap_or_default_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
-        let errors = check_no_unwrap_or_default(&source, &ast);
+        let errors = check_no_unwrap_or_default(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_unwrap_or_else_detects_violation() {
         let (source, ast) = parse_fixture("no-unwrap-or-else");
-        let errors = check_no_unwrap_or_else(&source, &ast);
+        let errors = check_no_unwrap_or_else(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_unwrap_or_else_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
-        let errors = check_no_unwrap_or_else(&source, &ast);
+        let errors = check_no_unwrap_or_else(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_unwrap_unchecked_detects_violation() {
         let (source, ast) = parse_fixture("no-unwrap-unchecked");
-        let errors = check_no_unwrap_unchecked(&source, &ast);
+        let errors = check_no_unwrap_unchecked(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_unwrap_unchecked_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
-        let errors = check_no_unwrap_unchecked(&source, &ast);
+        let errors = check_no_unwrap_unchecked(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_unit_error_detects_violation() {
         let (source, ast) = parse_fixture("no-unit-error");
-        let errors = check_no_unit_error(&source, &ast);
+        let errors = check_no_unit_error(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_unit_error_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unit-error");
-        let errors = check_no_unit_error(&source, &ast);
+        let errors = check_no_unit_error(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_while_let_ok_detects_violation() {
         let (source, ast) = parse_fixture("no-while-let-ok");
-        let errors = check_no_while_let_ok(&source, &ast);
+        let errors = check_no_while_let_ok(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_while_let_ok_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-while-let-ok");
-        let errors = check_no_while_let_ok(&source, &ast);
+        let errors = check_no_while_let_ok(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_swallowed_err_detects_violation() {
         let (source, ast) = parse_fixture("no-swallowed-err");
-        let errors = check_no_swallowed_err(&source, &ast);
+        let errors = check_no_swallowed_err(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 3);
     }
 
     #[test]
     fn no_swallowed_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-swallowed-err");
-        let errors = check_no_swallowed_err(&source, &ast);
+        let errors = check_no_swallowed_err(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn no_inline_style_detects_violation() {
         let (source, ast) = parse_fixture("no-inline-style");
-        let errors = check_no_inline_style(&source, &ast);
+        let errors = check_no_inline_style(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn no_inline_style_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-inline-style");
-        let errors = check_no_inline_style(&source, &ast);
+        let errors = check_no_inline_style(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
     #[test]
     fn thiserror_unused_fields_detects_violation() {
         let (source, ast) = parse_fixture("thiserror-unused-fields");
-        let errors = check_thiserror_unused_fields(&source, &ast);
+        let errors = check_thiserror_unused_fields(&source, &ast, "src/main.rs");
         assert_eq!(errors.len(), 1);
     }
 
     #[test]
     fn thiserror_unused_fields_allows_valid() {
         let (source, ast) = parse_fixture("valid-thiserror-unused-fields");
-        let errors = check_thiserror_unused_fields(&source, &ast);
+        let errors = check_thiserror_unused_fields(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 }
