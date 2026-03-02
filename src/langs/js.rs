@@ -162,6 +162,18 @@ fn line_number(source: &str, offset: u32) -> usize {
     })
 }
 
+fn check_no_eslint_disable(source: &str) -> Vec<String> {
+    source
+        .match_indices("eslint-disable")
+        .map(|(offset, _)| {
+            let line = source.get(..offset).map_or(1, |slice| {
+                slice.chars().filter(|ch| *ch == '\n').count() + 1
+            });
+            format!("line {line}: eslint-disable")
+        })
+        .collect()
+}
+
 fn is_silent_default(expr: &Expression<'_>) -> bool {
     match expr {
         Expression::ObjectExpression(obj) => obj.properties.is_empty(),
@@ -449,6 +461,16 @@ fn check_ts_files(paths: Vec<String>) -> (Vec<Violation>, Vec<AppError>) {
     for path in paths {
         match fs::read_to_string(&path) {
             Ok(source) => {
+                let eslint_errors = check_no_eslint_disable(&source);
+                if !eslint_errors.is_empty() {
+                    all_violations.push(Violation {
+                        errors: eslint_errors,
+                        file: path.clone(),
+                        hint: Some("fix the violation instead of disabling the rule".to_string()),
+                        rule: "no-eslint-disable".to_string(),
+                    });
+                }
+
                 let allocator = Allocator::default();
                 let source_type = if Path::new(&path)
                     .extension()
@@ -530,6 +552,20 @@ mod tests {
 
     fn has_violation(violations: &[Violation], rule: &str) -> bool {
         violations.iter().any(|violation| violation.rule == rule)
+    }
+
+    #[test]
+    fn no_eslint_disable_detects_violation() {
+        let source = read_fixture("no-eslint-disable.ts");
+        let errors = check_no_eslint_disable(&source);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_eslint_disable_allows_valid() {
+        let source = read_fixture("valid-no-eslint-disable.ts");
+        let errors = check_no_eslint_disable(&source);
+        assert!(errors.is_empty());
     }
 
     #[test]
