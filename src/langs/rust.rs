@@ -305,6 +305,13 @@ fn check_no_cfg_attr_suppress(source: &str, ast: &SourceFile) -> Vec<String> {
         .collect()
 }
 
+fn is_call_expr(expr: &ast::Expr) -> bool {
+    matches!(
+        expr,
+        ast::Expr::CallExpr(_) | ast::Expr::MethodCallExpr(_) | ast::Expr::AwaitExpr(_)
+    )
+}
+
 fn check_no_discard_result(source: &str, ast: &SourceFile) -> Vec<String> {
     ast.syntax()
         .descendants()
@@ -314,11 +321,31 @@ fn check_no_discard_result(source: &str, ast: &SourceFile) -> Vec<String> {
             }
             let let_stmt = ast::LetStmt::cast(node.clone())?;
             let pat = let_stmt.pat()?;
-            if !matches!(pat, ast::Pat::WildcardPat(_)) {
+            let is_wildcard = matches!(pat, ast::Pat::WildcardPat(_));
+            let is_underscore_ident = matches!(&pat, ast::Pat::IdentPat(ident) if {
+                ident.name().is_some_and(|n| {
+                    let text = n.text().to_string();
+                    text.starts_with('_') && text != "_"
+                })
+            });
+            if !is_wildcard && !is_underscore_ident {
                 return None;
             }
+            if is_underscore_ident {
+                let init = let_stmt.initializer()?;
+                if !is_call_expr(&init) {
+                    return None;
+                }
+            }
             let line = line_number(source, node.text_range().start().into());
-            Some(format!("line {line}: let _ = ..."))
+            let binding = match &pat {
+                ast::Pat::IdentPat(ident) => match ident.name() {
+                    Some(n) => n.text().to_string(),
+                    None => "_".to_string(),
+                },
+                _ => "_".to_string(),
+            };
+            Some(format!("line {line}: let {binding} = ..."))
         })
         .collect()
 }
@@ -1193,7 +1220,7 @@ mod tests {
     fn no_discard_result_detects_violation() {
         let (source, ast) = parse_fixture("no-discard-result");
         let errors = check_no_discard_result(&source, &ast);
-        assert_eq!(errors.len(), 1);
+        assert_eq!(errors.len(), 2);
     }
 
     #[test]

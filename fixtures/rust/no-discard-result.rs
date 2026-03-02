@@ -4,4 +4,5 @@ fn fallible() -> Result<i32, String> {
 
 fn process() {
     let _ = fallible();
+    let _result = fallible();
 }
