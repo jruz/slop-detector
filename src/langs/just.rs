@@ -53,6 +53,11 @@ const RULES: &[Rule] = &[
         name: "no-external-without-caret",
     },
     Rule {
+        check: check_no_bunx,
+        hint: Some("use `bun run <cmd>` instead of `bunx <cmd>`"),
+        name: "no-bunx",
+    },
+    Rule {
         check: check_no_recipe_deps,
         hint: Some("call dependencies explicitly with `just <recipe>` in the body"),
         name: "no-recipe-deps",
@@ -165,6 +170,40 @@ fn first_token(line: &str) -> Option<&str> {
     }
     let token = trimmed.split_whitespace().next()?;
     Some(token)
+}
+
+fn check_no_bunx(source: &str, tree: &Tree) -> Vec<String> {
+    let source_bytes = source.as_bytes();
+    let mut recipes = Vec::new();
+    find_recipes(tree.root_node(), &mut recipes);
+
+    let mut errors = Vec::new();
+    for recipe in &recipes {
+        for (line_num, text) in recipe_body_lines(*recipe, source_bytes) {
+            let Some(token) = first_token(text) else {
+                continue;
+            };
+            let bare = match token.strip_prefix('^') {
+                Some(stripped) => stripped,
+                None => token,
+            };
+            if bare != "bunx" {
+                continue;
+            }
+            match recipe_name(*recipe, source_bytes) {
+                Ok(Some(name)) => {
+                    errors.push(format!("line {line_num}: recipe `{name}` uses `bunx`"));
+                }
+                Ok(None) => {
+                    errors.push(format!("line {line_num}: recipe uses `bunx`"));
+                }
+                Err(utf8_err) => {
+                    errors.push(format!("UTF-8 error: {utf8_err}"));
+                }
+            }
+        }
+    }
+    errors
 }
 
 fn check_no_external_without_caret(source: &str, tree: &Tree) -> Vec<String> {
@@ -347,6 +386,20 @@ mod tests {
         let mut parser = create_parser().expect("parser should load");
         let tree = parser.parse(&source, None).expect("should parse");
         (source, tree)
+    }
+
+    #[test]
+    fn no_bunx_detects_violation() {
+        let (source, tree) = parse_fixture("no-bunx");
+        let errors = check_no_bunx(&source, &tree);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_bunx_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-bunx");
+        let errors = check_no_bunx(&source, &tree);
+        assert!(errors.is_empty());
     }
 
     #[test]
