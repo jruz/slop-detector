@@ -3,4 +3,4 @@ rules = ["rust-version-sync"]
 files = []
 
 [ignore.by-rule]
-no-trait-impl = ["src/langs/js.rs"]
+no-trait-impl = ["src/langs/js.rs", "src/langs/playwright.rs"]

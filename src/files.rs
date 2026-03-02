@@ -26,10 +26,15 @@ pub fn find_files(patterns: &[&str], excludes: &[&str]) -> Result<Vec<String>> {
         }
 
         let matches_pattern = patterns.iter().any(|pattern| {
-            if let Some((prefix, rest)) = pattern.split_once('/') {
-                let ext = rest.strip_prefix("*.").map_or(rest, |stripped| stripped);
-                path_str.starts_with(&format!("./{prefix}/"))
-                    && path.extension().is_some_and(|path_ext| path_ext == ext)
+            if let Some((prefix, filename_pattern)) = pattern.rsplit_once('/') {
+                if let Some(suffix) = filename_pattern.strip_prefix('*') {
+                    path_str.starts_with(&format!("./{prefix}/")) && path_str.ends_with(suffix)
+                } else {
+                    path_str.starts_with(&format!("./{prefix}/"))
+                        && path
+                            .file_name()
+                            .is_some_and(|name| name.to_string_lossy() == *filename_pattern)
+                }
             } else if let Some(ext) = pattern.strip_prefix("*.") {
                 path.extension().is_some_and(|path_ext| path_ext == ext)
             } else {

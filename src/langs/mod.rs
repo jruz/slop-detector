@@ -3,5 +3,6 @@ pub mod elixir;
 pub mod gleam;
 pub mod js;
 pub mod just;
+pub mod playwright;
 pub mod rust;
 pub mod tofu;
