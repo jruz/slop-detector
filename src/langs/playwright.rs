@@ -86,12 +86,24 @@ fn collect_violations(visitor: &PlaywrightVisitor<'_>) -> Vec<Violation> {
     let mut rules: Vec<(&str, &Vec<String>, Option<&str>)> = Vec::new();
 
     if is_client {
-        rules.push(("no-request", &visitor.request_errors, None));
-        rules.push(("no-page-request", &visitor.page_request_errors, None));
+        rules.push((
+            "no-request",
+            &visitor.request_errors,
+            Some("Use page for client tests, use request in server tests"),
+        ));
+        rules.push((
+            "no-page-request",
+            &visitor.page_request_errors,
+            Some("Use page for client tests, use request in server tests"),
+        ));
     }
 
     if is_server {
-        rules.push(("no-page", &visitor.page_errors, None));
+        rules.push((
+            "no-page",
+            &visitor.page_errors,
+            Some("Use request for server tests, use page in client tests"),
+        ));
     }
 
     rules
