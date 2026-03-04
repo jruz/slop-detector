@@ -78,6 +78,7 @@ slop-detector --create-config-for-violations
 - `no-bash-shebang` - Use nushell instead of bash/sh shebangs
 - `no-bunx` - Use `bun run` instead of `bunx`
 - `no-external-without-caret` - Use `^command` to mark external commands in nu recipes
+- `no-lowercase-args` - Use UPPERCASE for recipe arguments
 - `no-recipe-deps` - Call dependencies explicitly with `just <recipe>` in the body
 
 ### Rust

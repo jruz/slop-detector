@@ -62,6 +62,11 @@ const RULES: &[Rule] = &[
         hint: Some("call dependencies explicitly with `just <recipe>` in the body"),
         name: "no-recipe-deps",
     },
+    Rule {
+        check: check_no_lowercase_args,
+        hint: Some("use UPPERCASE for recipe arguments"),
+        name: "no-lowercase-args",
+    },
 ];
 
 struct ParsedJust {
@@ -273,6 +278,73 @@ fn check_no_bash_shebang(source: &str, tree: &Tree) -> Vec<String> {
     errors
 }
 
+fn recipe_param_names<'tree>(recipe: Node<'tree>, source: &'tree [u8]) -> Vec<(usize, String)> {
+    let mut params = Vec::new();
+    for child in recipe.children(&mut recipe.walk()) {
+        if child.kind() != "recipe_header" {
+            continue;
+        }
+        for header_child in child.children(&mut child.walk()) {
+            if header_child.kind() != "parameters" {
+                continue;
+            }
+            for param_node in header_child.children(&mut header_child.walk()) {
+                let target = match param_node.kind() {
+                    "parameter" => param_node,
+                    "variadic_parameter" => {
+                        match param_node
+                            .children(&mut param_node.walk())
+                            .find(|variadic_child| variadic_child.kind() == "parameter")
+                        {
+                            Some(inner) => inner,
+                            None => continue,
+                        }
+                    }
+                    _ => continue,
+                };
+                if let Some(name_node) = target.child_by_field_name("name")
+                    && let Ok(name) = name_node.utf8_text(source)
+                {
+                    let line = name_node.start_position().row + 1;
+                    params.push((line, name.to_string()));
+                }
+            }
+        }
+    }
+    params
+}
+
+fn check_no_lowercase_args(source: &str, tree: &Tree) -> Vec<String> {
+    let source_bytes = source.as_bytes();
+    let mut recipes = Vec::new();
+    find_recipes(tree.root_node(), &mut recipes);
+
+    let mut errors = Vec::new();
+    for recipe in &recipes {
+        let rname = recipe_name(*recipe, source_bytes);
+        for (line, param) in recipe_param_names(*recipe, source_bytes) {
+            if param != param.to_uppercase() {
+                match &rname {
+                    Ok(Some(name)) => {
+                        errors.push(format!(
+                            "line {line}: recipe `{name}` has lowercase argument `{param}`"
+                        ));
+                    }
+                    Ok(None) => {
+                        errors.push(format!(
+                            "line {line}: recipe has lowercase argument `{param}`"
+                        ));
+                    }
+                    Err(utf8_err) => {
+                        errors.push(format!("UTF-8 error: {utf8_err}"));
+                    }
+                }
+            }
+        }
+    }
+    errors
+}
+
 fn check_no_recipe_deps(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
     let mut recipes = Vec::new();
@@ -441,6 +513,20 @@ mod tests {
     fn no_recipe_deps_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-recipe-deps");
         let errors = check_no_recipe_deps(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_lowercase_args_detects_violation() {
+        let (source, tree) = parse_fixture("no-lowercase-args");
+        let errors = check_no_lowercase_args(&source, &tree);
+        assert_eq!(errors.len(), 10);
+    }
+
+    #[test]
+    fn no_lowercase_args_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-lowercase-args");
+        let errors = check_no_lowercase_args(&source, &tree);
         assert!(errors.is_empty());
     }
 }
