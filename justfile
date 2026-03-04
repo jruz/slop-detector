@@ -167,8 +167,8 @@ release-tag:
     ^git push origin $tag
     print $"(ansi green)OK: Pushed signed tag ($tag)(ansi reset)"
 
-release-upload tag:
-    nu scripts/release-upload.nu {{ tag }}
+release-upload TAG:
+    nu scripts/release-upload.nu {{ TAG }}
 
-release-delete tag:
-    nu scripts/release-delete.nu {{ tag }}
+release-delete TAG:
+    nu scripts/release-delete.nu {{ TAG }}
