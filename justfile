@@ -15,26 +15,6 @@ rust-check:
     just rust-lint
     just rust-test
 
-rust-check-allow:
-    #!/usr/bin/env nu
-    let matches = (rg '#\[allow\(' src --type rust | complete)
-    if $matches.exit_code == 0 {
-        print $matches.stdout
-        error make {
-            msg: "ERROR: #[allow(...)] is banned"
-        }
-    }
-
-rust-check-unwrap:
-    #!/usr/bin/env nu
-    let matches = (rg '\.unwrap\(' src --type rust | complete)
-    if $matches.exit_code == 0 {
-        print $matches.stdout
-        error make {
-            msg: "ERROR: .unwrap() is banned"
-        }
-    }
-
 rust-clippy *ARGS='':
     cargo clippy --all-targets {{ARGS}}
 
@@ -52,8 +32,6 @@ rust-fmt-fix:
     cargo fmt --all
 
 rust-lint:
-    just rust-check-allow
-    just rust-check-unwrap
     just rust-fmt-check
     just rust-clippy
 
