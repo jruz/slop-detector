@@ -20,7 +20,9 @@ rust-check-allow:
     let matches = (rg '#\[allow\(' src --type rust | complete)
     if $matches.exit_code == 0 {
         print $matches.stdout
-        error make {msg: "ERROR: #[allow(...)] is banned - refactor code to satisfy the linter"}
+        error make {
+            msg: "ERROR: #[allow(...)] is banned"
+        }
     }
 
 rust-check-unwrap:
@@ -28,7 +30,9 @@ rust-check-unwrap:
     let matches = (rg '\.unwrap\(' src --type rust | complete)
     if $matches.exit_code == 0 {
         print $matches.stdout
-        error make {msg: "ERROR: .unwrap() is banned - use explicit error handling (?, match, if let, etc.)"}
+        error make {
+            msg: "ERROR: .unwrap() is banned"
+        }
     }
 
 rust-clippy *ARGS='':
@@ -65,7 +69,10 @@ rust-upgrade:
 
 nu-check:
     #!/usr/bin/env nu
-    ^fd --absolute-path --extension nu --exec nu --commands 'nu-check --debug {}'
+    (^fd
+        --absolute-path
+        --extension nu
+        --exec nu --commands 'nu-check --debug {}')
     nu-lint --config nu-lint.toml
 
 nu-fix:
@@ -96,21 +103,26 @@ build-linux:
     rustup target add aarch64-unknown-linux-gnu
     cargo zigbuild --release --target x86_64-unknown-linux-gnu
     cargo zigbuild --release --target aarch64-unknown-linux-gnu
-    cp target/x86_64-unknown-linux-gnu/release/slop-detector slop-detector-linux-x86_64
-    cp target/aarch64-unknown-linux-gnu/release/slop-detector slop-detector-linux-arm64
+    cp target/x86_64-unknown-linux-gnu/release/slop-detector \
+        slop-detector-linux-x86_64
+    cp target/aarch64-unknown-linux-gnu/release/slop-detector \
+        slop-detector-linux-arm64
 
 build-macos:
     rustup target add x86_64-apple-darwin
     rustup target add aarch64-apple-darwin
     cargo zigbuild --release --target x86_64-apple-darwin
     cargo zigbuild --release --target aarch64-apple-darwin
-    cp target/x86_64-apple-darwin/release/slop-detector slop-detector-macos-x86_64
-    cp target/aarch64-apple-darwin/release/slop-detector slop-detector-macos-arm64
+    cp target/x86_64-apple-darwin/release/slop-detector \
+        slop-detector-macos-x86_64
+    cp target/aarch64-apple-darwin/release/slop-detector \
+        slop-detector-macos-arm64
 
 build-windows:
     rustup target add x86_64-pc-windows-msvc
     cargo xwin build --release --target x86_64-pc-windows-msvc
-    cp target/x86_64-pc-windows-msvc/release/slop-detector.exe slop-detector-windows-x86_64.exe
+    cp target/x86_64-pc-windows-msvc/release/slop-detector.exe \
+        slop-detector-windows-x86_64.exe
 
 # ---------------- CI WRAPPERS
 
