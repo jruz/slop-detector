@@ -63,6 +63,14 @@ const RULES: &[Rule] = &[
         name: "no-recipe-deps",
     },
     Rule {
+        check: check_no_long_lines,
+        hint: Some(
+            "break long commands into multiple lines: \
+             bash uses `\\` and nu uses `(\\n` + indent",
+        ),
+        name: "no-long-lines",
+    },
+    Rule {
         check: check_no_lowercase_args,
         hint: Some("use UPPERCASE for recipe arguments"),
         name: "no-lowercase-args",
@@ -276,6 +284,26 @@ fn check_no_bash_shebang(source: &str, tree: &Tree) -> Vec<String> {
         }
     }
     errors
+}
+
+const MAX_LINE_LENGTH: usize = 80;
+
+fn check_no_long_lines(source: &str, _tree: &Tree) -> Vec<String> {
+    source
+        .lines()
+        .enumerate()
+        .filter_map(|(idx, line)| {
+            let char_count = line.chars().count();
+            (char_count > MAX_LINE_LENGTH).then(|| {
+                format!(
+                    "line {}: {} chars (max {})",
+                    idx + 1,
+                    char_count,
+                    MAX_LINE_LENGTH
+                )
+            })
+        })
+        .collect()
 }
 
 fn recipe_param_names<'tree>(recipe: Node<'tree>, source: &'tree [u8]) -> Vec<(usize, String)> {
@@ -513,6 +541,20 @@ mod tests {
     fn no_recipe_deps_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-recipe-deps");
         let errors = check_no_recipe_deps(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_long_lines_detects_violation() {
+        let (source, tree) = parse_fixture("no-long-lines");
+        let errors = check_no_long_lines(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_long_lines_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-long-lines");
+        let errors = check_no_long_lines(&source, &tree);
         assert!(errors.is_empty());
     }
 
