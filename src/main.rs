@@ -82,10 +82,12 @@ fn main() -> Result<ExitCode> {
 
     let args = Args::parse();
 
+    let existing_config = load_config()?;
+
     let config = if args.create_config {
         types::Config::default()
     } else {
-        load_config()?
+        existing_config.clone()
     };
 
     let commands_to_run: &[SingleCommand] = match args.command {
@@ -120,10 +122,15 @@ fn main() -> Result<ExitCode> {
     }
 
     if args.create_config {
-        let toml_content = generate_config_toml(&all_violations);
+        let toml_content = generate_config_toml(&all_violations, &existing_config);
+        let action = if existing_config.ignore.is_some() {
+            "Updated"
+        } else {
+            "Created"
+        };
         fs::write("slop-detector.toml", toml_content)?;
         println!(
-            "Created slop-detector.toml with {} violations excluded",
+            "{action} slop-detector.toml with {} violations excluded",
             all_violations.len()
         );
         return Ok(ExitCode::SUCCESS);

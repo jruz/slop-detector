@@ -29,12 +29,12 @@ pub enum AppError {
     Read { file: String, message: String },
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
     pub ignore: Option<IgnoreConfig>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct IgnoreConfig {
     #[serde(rename = "by-rule")]
     pub by_rule: Option<HashMap<String, Vec<String>>>,
