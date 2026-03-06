@@ -11,7 +11,7 @@ use clap::{Parser, ValueEnum};
 use color_eyre::Result;
 
 use config::{filter_violations, load_config};
-use langs::{css, elixir, gleam, js, just, playwright, rust, tofu};
+use langs::{css, elixir, gleam, js, just, playwright, rust, swift, tofu};
 use output::{format_violations, generate_config_toml};
 use types::Violation;
 
@@ -25,6 +25,7 @@ enum Command {
     Just,
     Playwright,
     Rust,
+    Swift,
     Tofu,
 }
 
@@ -37,6 +38,7 @@ enum SingleCommand {
     Just,
     Playwright,
     Rust,
+    Swift,
     Tofu,
 }
 
@@ -48,6 +50,7 @@ const ALL_COMMANDS: &[SingleCommand] = &[
     SingleCommand::Just,
     SingleCommand::Playwright,
     SingleCommand::Rust,
+    SingleCommand::Swift,
     SingleCommand::Tofu,
 ];
 
@@ -60,6 +63,7 @@ fn run_check(cmd: SingleCommand) -> types::CheckResult {
         SingleCommand::Just => just::check(),
         SingleCommand::Playwright => playwright::check(),
         SingleCommand::Rust => rust::check(),
+        SingleCommand::Swift => swift::check(),
         SingleCommand::Tofu => tofu::check(),
     }
 }
@@ -67,7 +71,7 @@ fn run_check(cmd: SingleCommand) -> types::CheckResult {
 #[derive(Parser, Debug)]
 #[command(name = "slop-detector")]
 #[command(
-    about = "Linter for detecting anti-patterns in CSS, Elixir, Gleam, JS/TS, Just, Playwright, Rust, and OpenTofu code"
+    about = "Linter for detecting anti-patterns in CSS, Elixir, Gleam, JS/TS, Just, Playwright, Rust, Swift, and OpenTofu code"
 )]
 struct Args {
     #[arg(value_enum, default_value = "all")]
@@ -99,6 +103,7 @@ fn main() -> Result<ExitCode> {
         Command::Just => &[SingleCommand::Just],
         Command::Playwright => &[SingleCommand::Playwright],
         Command::Rust => &[SingleCommand::Rust],
+        Command::Swift => &[SingleCommand::Swift],
         Command::Tofu => &[SingleCommand::Tofu],
     };
 
