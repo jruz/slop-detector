@@ -125,6 +125,9 @@ slop-detector --create-config-for-violations
 - `thiserror-unused-fields` - Use all error fields in #[error("...")]
 
 ### Swift
+- `no-guard-return` - Throw or log before returning instead of silently discarding
+- `no-silent-catch` - Handle the error instead of silently discarding it
+- `no-silent-if-let` - Throw or log before returning instead of silently discarding
 - `no-try-question-mark` - Use do/catch to handle errors instead of silencing them
 
 ### OpenTofu

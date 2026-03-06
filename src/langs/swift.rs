@@ -14,11 +14,28 @@ struct Rule {
     name: &'static str,
 }
 
-const RULES: &[Rule] = &[Rule {
-    check: check_no_try_question_mark,
-    hint: Some("use do/catch to handle errors instead of silencing them"),
-    name: "no-try-question-mark",
-}];
+const RULES: &[Rule] = &[
+    Rule {
+        check: check_no_guard_return,
+        hint: Some("throw or log before returning instead of silently discarding"),
+        name: "no-guard-return",
+    },
+    Rule {
+        check: check_no_silent_catch,
+        hint: Some("handle the error instead of silently discarding it"),
+        name: "no-silent-catch",
+    },
+    Rule {
+        check: check_no_silent_if_let,
+        hint: Some("throw or log before returning instead of silently discarding"),
+        name: "no-silent-if-let",
+    },
+    Rule {
+        check: check_no_try_question_mark,
+        hint: Some("use do/catch to handle errors instead of silencing them"),
+        name: "no-try-question-mark",
+    },
+];
 
 struct ParsedSwift {
     path: String,
@@ -65,6 +82,111 @@ fn node_first_line<'src>(
     };
     let text = std::str::from_utf8(slice)?;
     Ok(text.lines().next().map_or("try?", |line| line))
+}
+
+fn is_silent_return(statements: Node<'_>) -> bool {
+    let mut walker = statements.walk();
+    let mut children = statements.children(&mut walker);
+    let Some(first) = children.next() else {
+        return false;
+    };
+    if children.next().is_some() || first.kind() != "control_transfer_statement" {
+        return false;
+    }
+
+    let kinds: Vec<&str> = first
+        .children(&mut first.walk())
+        .map(|child| child.kind())
+        .collect();
+
+    matches!(kinds.as_slice(), ["return"] | ["return", "nil"])
+}
+
+fn find_else_body(node: Node<'_>) -> Option<Node<'_>> {
+    let mut found_else = false;
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "else" {
+            found_else = true;
+            continue;
+        }
+        if found_else && child.kind() == "statements" {
+            return Some(child);
+        }
+    }
+    None
+}
+
+fn check_no_guard_return(source: &str, tree: &Tree) -> Vec<String> {
+    let mut guards = Vec::new();
+    find_nodes_by_kind(tree.root_node(), "guard_statement", &mut guards);
+
+    let mut errors = Vec::new();
+    for node in &guards {
+        let Some(body) = find_else_body(*node) else {
+            continue;
+        };
+        if !is_silent_return(body) {
+            continue;
+        }
+        let line = node.start_position().row + 1;
+        match node_first_line(*node, source) {
+            Ok(text) => errors.push(format!("line {line}: {text}")),
+            Err(utf8_err) => errors.push(format!("UTF-8 error: {utf8_err}")),
+        }
+    }
+    errors
+}
+
+fn check_no_silent_catch(source: &str, tree: &Tree) -> Vec<String> {
+    let mut catches = Vec::new();
+    find_nodes_by_kind(tree.root_node(), "catch_block", &mut catches);
+
+    let mut errors = Vec::new();
+    for node in &catches {
+        let statements = node
+            .children(&mut node.walk())
+            .find(|child| child.kind() == "statements");
+        let is_silent = match statements {
+            None => true,
+            Some(stmts) => is_silent_return(stmts),
+        };
+        if !is_silent {
+            continue;
+        }
+        let line = node.start_position().row + 1;
+        match node_first_line(*node, source) {
+            Ok(text) => errors.push(format!("line {line}: {text}")),
+            Err(utf8_err) => errors.push(format!("UTF-8 error: {utf8_err}")),
+        }
+    }
+    errors
+}
+
+fn check_no_silent_if_let(source: &str, tree: &Tree) -> Vec<String> {
+    let mut if_stmts = Vec::new();
+    find_nodes_by_kind(tree.root_node(), "if_statement", &mut if_stmts);
+
+    let mut errors = Vec::new();
+    for node in &if_stmts {
+        let is_if_let = node
+            .children(&mut node.walk())
+            .any(|child| child.kind() == "value_binding_pattern");
+        if !is_if_let {
+            continue;
+        }
+        let Some(body) = find_else_body(*node) else {
+            continue;
+        };
+        if !is_silent_return(body) {
+            continue;
+        }
+        let line = node.start_position().row + 1;
+        match node_first_line(*node, source) {
+            Ok(text) => errors.push(format!("line {line}: {text}")),
+            Err(utf8_err) => errors.push(format!("UTF-8 error: {utf8_err}")),
+        }
+    }
+    errors
 }
 
 fn check_no_try_question_mark(source: &str, tree: &Tree) -> Vec<String> {
@@ -179,6 +301,48 @@ mod tests {
         let mut parser = create_parser().expect("parser should load");
         let tree = parser.parse(&source, None).expect("should parse");
         (source, tree)
+    }
+
+    #[test]
+    fn no_guard_return_detects_violation() {
+        let (source, tree) = parse_fixture("no-guard-return.swift");
+        let errors = check_no_guard_return(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_guard_return_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-guard-return.swift");
+        let errors = check_no_guard_return(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_silent_catch_detects_violation() {
+        let (source, tree) = parse_fixture("no-silent-catch.swift");
+        let errors = check_no_silent_catch(&source, &tree);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_silent_catch_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-silent-catch.swift");
+        let errors = check_no_silent_catch(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_silent_if_let_detects_violation() {
+        let (source, tree) = parse_fixture("no-silent-if-let.swift");
+        let errors = check_no_silent_if_let(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_silent_if_let_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-silent-if-let.swift");
+        let errors = check_no_silent_if_let(&source, &tree);
+        assert!(errors.is_empty());
     }
 
     #[test]
