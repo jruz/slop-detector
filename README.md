@@ -59,6 +59,7 @@ slop-detector --create-config-for-violations
 - `no-error-passthrough` - Use `use value <- result.try(expr)` to avoid re-wrapping
 - `no-ignored-error` - Handle or propagate errors instead of ignoring
 - `no-let-assert-outside-main` - Use pattern matching or result.try instead
+- `no-map-error-discard` - Use case with explicit Nil pattern instead of discarding the error
 - `no-nested-if` - Use multi-pattern case or bool.guard to flatten
 - `no-nested-option` - Use `use value <- option.then(expr)` to flatten
 - `no-nested-result` - Use `use value <- result.try(expr)` to flatten

@@ -44,8 +44,13 @@ const GLEAM_RULES: &[GleamRule] = &[
         name: "no-discarded-ok",
     },
     GleamRule {
+        check: check_no_map_error_discard,
+        hint: Some("use case with explicit Nil pattern instead of discarding the error"),
+        name: "no-map-error-discard",
+    },
+    GleamRule {
         check: check_no_ignored_error,
-        hint: Some("handle or propagate the error instead of ignoring it"),
+        hint: Some("handle or propagate the error; if the error is Nil use that instead of _"),
         name: "no-ignored-error",
     },
     GleamRule {
@@ -564,6 +569,120 @@ fn check_no_nested_if(source: &str, tree: &Tree) -> Vec<String> {
     errors
 }
 
+fn is_map_error_call(node: Node<'_>, source: &[u8]) -> bool {
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "field_access" {
+            let mut has_result = false;
+            let mut has_map_error = false;
+            for inner in child.children(&mut child.walk()) {
+                if inner.kind() == "identifier"
+                    && let Ok(text) = inner.utf8_text(source)
+                    && text == "result"
+                {
+                    has_result = true;
+                }
+                if inner.kind() == "label"
+                    && let Ok(text) = inner.utf8_text(source)
+                    && text == "map_error"
+                {
+                    has_map_error = true;
+                }
+            }
+            return has_result && has_map_error;
+        }
+    }
+    false
+}
+
+fn body_has_identifier(node: Node<'_>, source: &[u8], name: &str) -> bool {
+    if node.kind() == "identifier"
+        && let Ok(text) = node.utf8_text(source)
+        && text == name
+    {
+        return true;
+    }
+    for child in node.children(&mut node.walk()) {
+        if body_has_identifier(child, source, name) {
+            return true;
+        }
+    }
+    false
+}
+
+fn fn_param_is_discarded_or_unused(node: Node<'_>, source: &[u8]) -> bool {
+    for child in node.children(&mut node.walk()) {
+        if child.kind() != "argument" {
+            continue;
+        }
+        for inner in child.children(&mut child.walk()) {
+            if inner.kind() != "anonymous_function" {
+                continue;
+            }
+            let mut param_name: Option<String> = None;
+            let mut is_discard = false;
+            let mut body_node: Option<Node<'_>> = None;
+
+            for part in inner.children(&mut inner.walk()) {
+                if part.kind() == "function_parameters" {
+                    for fp in part.children(&mut part.walk()) {
+                        if fp.kind() == "function_parameter" {
+                            for binding in fp.children(&mut fp.walk()) {
+                                if binding.kind() == "discard" {
+                                    is_discard = true;
+                                }
+                                if binding.kind() == "identifier"
+                                    && let Ok(text) = binding.utf8_text(source)
+                                {
+                                    param_name = Some(text.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                if part.kind() == "function_body" {
+                    body_node = Some(part);
+                }
+            }
+
+            if is_discard {
+                return true;
+            }
+            if let Some(name) = param_name
+                && let Some(body) = body_node
+                && !body_has_identifier(body, source, &name)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn check_no_map_error_discard(source: &str, tree: &Tree) -> Vec<String> {
+    let mut errors = Vec::new();
+    let source_bytes = source.as_bytes();
+
+    let mut calls = Vec::new();
+    find_function_calls(tree.root_node(), &mut calls);
+
+    for call in calls {
+        if is_map_error_call(call, source_bytes) {
+            for child in call.children(&mut call.walk()) {
+                if child.kind() == "arguments"
+                    && fn_param_is_discarded_or_unused(child, source_bytes)
+                {
+                    let line = call.start_position().row + 1;
+                    errors.push(format!(
+                        "line {line}: result.map_error with discarded param"
+                    ));
+                }
+            }
+        }
+    }
+
+    errors
+}
+
 fn is_unwrap_call(node: Node<'_>, source: &[u8]) -> bool {
     for child in node.children(&mut node.walk()) {
         if child.kind() == "field_access" {
@@ -980,6 +1099,20 @@ mod tests {
     fn no_nested_if_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-nested-if.gleam");
         let errors = check_no_nested_if(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_map_error_discard_detects_violation() {
+        let (source, tree) = parse_fixture("no-map-error-discard.gleam");
+        let errors = check_no_map_error_discard(&source, &tree);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_map_error_discard_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-map-error-discard.gleam");
+        let errors = check_no_map_error_discard(&source, &tree);
         assert!(errors.is_empty());
     }
 
