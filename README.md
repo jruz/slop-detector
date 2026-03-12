@@ -99,6 +99,7 @@ slop-detector --create-config-for-violations
 - `no-expect-attr` - Refactor instead of suppressing lints
 - `no-expect-outside-tests` - Use ? or match, expect only in tests
 - `no-if-let-ok-without-else` - Add else to handle error case
+- `no-ignore-test` - Don't ignore tests, fix the underlying issue
 - `no-impl` - Use free functions
 - `no-inline-style` - Use CSS classes instead of inline styles
 - `no-is-ok-is-err` - Use the value instead of just checking

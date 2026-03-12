@@ -63,6 +63,11 @@ const RULES: &[Rule] = &[
         name: "no-let-ok-else-continue",
     },
     Rule {
+        check: check_no_ignore_test,
+        hint: Some("don't ignore tests, fix the underlying issue"),
+        name: "no-ignore-test",
+    },
+    Rule {
         check: check_no_impl,
         hint: Some("use free functions, impl is banned"),
         name: "no-impl",
@@ -485,6 +490,24 @@ fn check_no_let_ok_else_continue(source: &str, ast: &SourceFile, _path: &str) ->
             }
             let line = line_number(source, node.text_range().start().into());
             Some(format!("line {line}: let Ok(...) else {{ continue }}"))
+        })
+        .collect()
+}
+
+fn check_no_ignore_test(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::ATTR {
+                return None;
+            }
+            let attr = ast::Attr::cast(node)?;
+            let path = attr.path()?;
+            if path.to_string() != "ignore" {
+                return None;
+            }
+            let line = line_number(source, attr.syntax().text_range().start().into());
+            Some(format!("line {line}: #[ignore]"))
         })
         .collect()
 }
@@ -1311,6 +1334,20 @@ mod tests {
     fn no_let_ok_else_continue_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-let-ok-else-continue");
         let errors = check_no_let_ok_else_continue(&source, &ast, "src/main.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_ignore_test_detects_violation() {
+        let (source, ast) = parse_fixture("no-ignore-test");
+        let errors = check_no_ignore_test(&source, &ast, "src/main.rs");
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_ignore_test_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-ignore-test");
+        let errors = check_no_ignore_test(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 
