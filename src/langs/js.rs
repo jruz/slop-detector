@@ -174,15 +174,17 @@ fn check_no_eslint_disable(source: &str) -> Vec<String> {
         .collect()
 }
 
-fn is_silent_default(expr: &Expression<'_>) -> bool {
-    match expr {
-        Expression::ObjectExpression(obj) => obj.properties.is_empty(),
-        Expression::ArrayExpression(arr) => arr.elements.is_empty(),
-        Expression::StringLiteral(str_lit) => str_lit.value.is_empty(),
-        Expression::NumericLiteral(num_lit) => num_lit.value == 0.0,
-        Expression::BooleanLiteral(bool_lit) => !bool_lit.value,
-        _ => false,
-    }
+fn is_literal_default(expr: &Expression<'_>) -> bool {
+    matches!(
+        expr,
+        Expression::ObjectExpression(_)
+            | Expression::ArrayExpression(_)
+            | Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::TemplateLiteral(_)
+    )
 }
 
 fn is_binding_named_main(pattern: &BindingPattern<'_>) -> bool {
@@ -221,7 +223,7 @@ struct TsVisitor<'src> {
     interface_errors: Vec<String>,
     path: &'src str,
     throwing_fn_errors: Vec<String>,
-    silent_default_errors: Vec<String>,
+    default_errors: Vec<String>,
     source: &'src str,
     stderr_write_errors: Vec<String>,
     stdout_write_errors: Vec<String>,
@@ -307,14 +309,13 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         if matches!(
             expr.operator,
             LogicalOperator::Or | LogicalOperator::Coalesce
-        ) && is_silent_default(&expr.right)
+        ) && is_literal_default(&expr.right)
             && let Ok(start) = usize::try_from(expr.span.start)
             && let Ok(end) = usize::try_from(expr.span.end)
             && let Some(text) = self.source.get(start..end)
         {
             let line = line_number(self.source, expr.span.start);
-            self.silent_default_errors
-                .push(format!("line {line}: {text}"));
+            self.default_errors.push(format!("line {line}: {text}"));
         }
         walk::walk_logical_expression(self, expr);
     }
@@ -399,9 +400,9 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
             Some("use type instead"),
         ),
         (
-            "no-silent-defaults",
-            visitor.silent_default_errors,
-            Some("use Result or Option instead of silent defaults"),
+            "no-defaults",
+            visitor.default_errors,
+            Some("handle the error instead of providing a default"),
         ),
         (
             "no-console",
@@ -447,14 +448,15 @@ fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
         interface_errors: Vec::new(),
         path,
         throwing_fn_errors: Vec::new(),
-        silent_default_errors: Vec::new(),
+        default_errors: Vec::new(),
         source,
         stderr_write_errors: Vec::new(),
         stdout_write_errors: Vec::new(),
     }
 }
 
-fn check_ts_files(paths: Vec<String>) -> (Vec<Violation>, Vec<AppError>) {
+fn check_ts_files(paths: Vec<String>) -> (usize, Vec<Violation>, Vec<AppError>) {
+    let file_count = paths.len();
     let mut all_violations = Vec::new();
     let mut errors = Vec::new();
 
@@ -503,7 +505,7 @@ fn check_ts_files(paths: Vec<String>) -> (Vec<Violation>, Vec<AppError>) {
         }
     }
 
-    (all_violations, errors)
+    (file_count, all_violations, errors)
 }
 
 pub fn check() -> CheckResult {
@@ -515,10 +517,10 @@ pub fn check() -> CheckResult {
     errors.extend(pkg_errors);
     let pkg_violations = run_package_json_rules(&parsed_packages, PACKAGE_JSON_RULES);
 
-    let (ts_violations, ts_errors) = check_ts_files(ts_paths);
+    let (ts_file_count, ts_violations, ts_errors) = check_ts_files(ts_paths);
     errors.extend(ts_errors);
 
-    let file_count = parsed_packages.len() + ts_violations.len();
+    let file_count = parsed_packages.len() + ts_file_count;
 
     CheckResult {
         errors,
@@ -697,16 +699,16 @@ mod tests {
     }
 
     #[test]
-    fn no_silent_defaults_detects_violation() {
-        let violations = parse_ts_fixture("no-silent-defaults");
-        assert!(has_violation(&violations, "no-silent-defaults"));
+    fn no_defaults_detects_violation() {
+        let violations = parse_ts_fixture("no-defaults");
+        assert!(has_violation(&violations, "no-defaults"));
         assert_eq!(violations.len(), 1);
     }
 
     #[test]
-    fn no_silent_defaults_allows_valid() {
-        let violations = parse_ts_fixture("valid-result");
-        assert!(!has_violation(&violations, "no-silent-defaults"));
+    fn no_defaults_allows_valid() {
+        let violations = parse_ts_fixture("valid-no-defaults");
+        assert!(!has_violation(&violations, "no-defaults"));
     }
 
     #[test]

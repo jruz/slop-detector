@@ -73,7 +73,7 @@ slop-detector --create-config-for-violations
 - `no-throwing-fn-without-try` - Wrap throwing functions in try/catch
 - `no-interface` - Use type instead of interface
 - `no-scripts-section` - No scripts in package.json
-- `no-silent-defaults` - Avoid `x || []`, `x ?? {}` patterns
+- `no-defaults` - Avoid `x ?? fallback`, `x || fallback` with literal defaults
 - `no-stderr-write` - Avoid writing to stderr
 - `no-stdout-write` - Use log.ts
 
