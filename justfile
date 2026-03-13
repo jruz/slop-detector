@@ -1,6 +1,15 @@
 default:
     @just --list
 
+run *ARGS='':
+    just rust-run {{ARGS}}
+
+watch:
+    just rust-watch
+
+fix:
+    just rust-fix
+
 shell:
     nix develop --command nu
 
@@ -12,10 +21,11 @@ rust-cargo-check:
 
 rust-check:
     just rust-cargo-check
-    just rust-lint
+    just rust-fmt-check
+    just rust-clippy-check
     just rust-test
 
-rust-clippy *ARGS='':
+rust-clippy-check *ARGS='':
     cargo clippy --all-targets {{ARGS}}
 
 rust-clippy-fix *ARGS='':
@@ -31,9 +41,11 @@ rust-fmt-check:
 rust-fmt-fix:
     cargo fmt --all
 
-rust-lint:
-    just rust-fmt-check
-    just rust-clippy
+rust-run *ARGS='':
+    cargo run -- {{ARGS}}
+
+rust-watch:
+    cargo watch --exec run
 
 rust-outdated:
     cargo outdated
