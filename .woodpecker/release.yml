@@ -22,18 +22,11 @@ steps:
       - cp target/x86_64-apple-darwin/release/slop-detector slop-detector-macos-x86_64
       - cp target/aarch64-apple-darwin/release/slop-detector slop-detector-macos-arm64
 
-  - name: BUILD_WINDOWS
-    image: ghcr.io/rust-cross/cargo-xwin:0.21.4
-    commands:
-      - rustup target add x86_64-pc-windows-msvc
-      - cargo xwin build --release --target x86_64-pc-windows-msvc
-      - cp target/x86_64-pc-windows-msvc/release/slop-detector.exe slop-detector-windows-x86_64.exe
-
   - name: RELEASE
-    image: 127.0.0.1:5000/woodpecker-job:v0.0.13
+    image: 127.0.0.1:5000/woodpecker-job:v0.0.15
     environment:
       CODEBERG_TOKEN:
-        from_secret: codeberg_token
+        from_secret: CODEBERG_TOKEN
     commands:
       - ls -la slop-detector-*
       - . /entrypoint.sh

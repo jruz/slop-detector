@@ -158,7 +158,7 @@ release-tag:
     print $"(ansi green)OK: Pushed signed tag ($tag)(ansi reset)"
 
 release-upload TAG:
-    nu scripts/release-upload.nu {{ TAG }}
+    bun scripts/release-upload.ts {{ TAG }}
 
 release-delete TAG:
-    nu scripts/release-delete.nu {{ TAG }}
+    bun scripts/release-delete.ts {{ TAG }}
