@@ -387,7 +387,7 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
         (
             "no-for-loop",
             visitor.for_loop_errors,
-            Some("use map, filter, or reduce instead"),
+            Some("use map, filter, forEach, Promise.all, etc"),
         ),
         (
             "no-throwing-fn-without-try",
