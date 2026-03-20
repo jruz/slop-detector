@@ -38,6 +38,11 @@ const RULES: &[Rule] = &[
         name: "no-discard-result",
     },
     Rule {
+        check: check_no_discard_try_value,
+        hint: Some("check the success value instead of discarding it"),
+        name: "no-discard-try-value",
+    },
+    Rule {
         check: check_no_drop_result,
         hint: Some("handle the Result instead of dropping it"),
         name: "no-drop-result",
@@ -351,6 +356,39 @@ fn check_no_discard_result(source: &str, ast: &SourceFile, _path: &str) -> Vec<S
                 _ => "_".to_string(),
             };
             Some(format!("line {line}: let {binding} = ..."))
+        })
+        .collect()
+}
+
+fn check_no_discard_try_value(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::LET_STMT {
+                return None;
+            }
+            let let_stmt = ast::LetStmt::cast(node.clone())?;
+            let pat = let_stmt.pat()?;
+            let is_wildcard = matches!(pat, ast::Pat::WildcardPat(_));
+            let is_underscore_ident = matches!(&pat, ast::Pat::IdentPat(ident) if {
+                ident.name().is_some_and(|n| n.text().starts_with('_'))
+            });
+            if !is_wildcard && !is_underscore_ident {
+                return None;
+            }
+            let init = let_stmt.initializer()?;
+            if !matches!(init, ast::Expr::TryExpr(_)) {
+                return None;
+            }
+            let line = line_number(source, node.text_range().start().into());
+            let binding = match &pat {
+                ast::Pat::IdentPat(ident) => match ident.name() {
+                    Some(n) => n.text().to_string(),
+                    None => "_".to_string(),
+                },
+                _ => "_".to_string(),
+            };
+            Some(format!("line {line}: let {binding} = ...?"))
         })
         .collect()
 }
@@ -1257,6 +1295,20 @@ mod tests {
     fn no_discard_result_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-discard-result");
         let errors = check_no_discard_result(&source, &ast, "src/main.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_discard_try_value_detects_violation() {
+        let (source, ast) = parse_fixture("no-discard-try-value");
+        let errors = check_no_discard_try_value(&source, &ast, "src/main.rs");
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_discard_try_value_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-discard-try-value");
+        let errors = check_no_discard_try_value(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 

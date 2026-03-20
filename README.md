@@ -95,6 +95,7 @@ slop-detector --create-config-for-violations
 - `no-catch-unwind` - Do not swallow panics
 - `no-cfg-attr-suppress` - No cfg_attr with allow/expect
 - `no-discard-result` - Handle Result instead of `let _ =`
+- `no-discard-try-value` - Check the success value instead of `let _var = expr?`
 - `no-drop-result` - Handle Result instead of dropping
 - `no-expect-attr` - Refactor instead of suppressing lints
 - `no-expect-outside-tests` - Use ? or match, expect only in tests
