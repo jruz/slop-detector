@@ -1,6 +1,16 @@
 # Slop Detector
 
-Linter for detecting AI generated slop in CSS, Elixir, Gleam, JS/TS, Just, Playwright, Rust, Swift, and OpenTofu code.
+Linter for detecting AI generated slop in:
+
+- CSS
+- Elixir
+- Gleam
+- JS/TS
+- Just
+- Playwright
+- Rust
+- Swift
+- OpenTofu
 
 ## Installation
 
@@ -12,15 +22,15 @@ cargo install --git https://codeberg.org/jruz/slop-detector
 
 ```bash
 slop-detector          # Check all languages
-slop-detector css      # Check CSS only
-slop-detector elixir   # Check Elixir only
-slop-detector gleam    # Check Gleam only
-slop-detector js       # Check JS/TS only
-slop-detector just        # Check Just only
-slop-detector playwright  # Check Playwright only
-slop-detector rust        # Check Rust only
-slop-detector swift       # Check Swift only
-slop-detector tofu     # Check OpenTofu only
+slop-detector css
+slop-detector elixir
+slop-detector gleam
+slop-detector js
+slop-detector just
+slop-detector playwright
+slop-detector rust
+slop-detector swift
+slop-detector tofu
 ```
 
 ## Configuration
@@ -74,6 +84,8 @@ slop-detector --create-config-for-violations
 - `no-interface` - Use type instead of interface
 - `no-scripts-section` - No scripts in package.json
 - `no-defaults` - Avoid `x ?? fallback`, `x || fallback` with literal defaults
+- `no-eslint-disable` - Fix the violation instead of disabling the rule
+- `no-satisfies` - Declare the type instead
 - `no-stderr-write` - Avoid writing to stderr
 - `no-stdout-write` - Use log.ts
 
