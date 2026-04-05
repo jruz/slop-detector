@@ -48,6 +48,11 @@ const RULES: &[Rule] = &[
         name: "no-drop-result",
     },
     Rule {
+        check: check_no_nested_call_args,
+        hint: Some("assign the inner call to a local before passing it"),
+        name: "no-nested-call-args",
+    },
+    Rule {
         check: check_no_expect_attr,
         hint: Some("refactor code to satisfy the linter instead of suppressing"),
         name: "no-expect-attr",
@@ -412,6 +417,58 @@ fn check_no_drop_result(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
                 return Some(format!("line {line}: drop(...)"));
             }
             None
+        })
+        .collect()
+}
+
+fn is_nested_call_expr(expr: &ast::Expr) -> bool {
+    match expr {
+        ast::Expr::AwaitExpr(inner) => inner
+            .expr()
+            .is_some_and(|inner_expr| is_nested_call_expr(&inner_expr)),
+        ast::Expr::CallExpr(_) | ast::Expr::MethodCallExpr(_) => true,
+        ast::Expr::CastExpr(inner) => inner
+            .expr()
+            .is_some_and(|inner_expr| is_nested_call_expr(&inner_expr)),
+        ast::Expr::ParenExpr(inner) => inner
+            .expr()
+            .is_some_and(|inner_expr| is_nested_call_expr(&inner_expr)),
+        ast::Expr::PrefixExpr(inner) => inner
+            .expr()
+            .is_some_and(|inner_expr| is_nested_call_expr(&inner_expr)),
+        ast::Expr::RefExpr(inner) => inner
+            .expr()
+            .is_some_and(|inner_expr| is_nested_call_expr(&inner_expr)),
+        ast::Expr::TryExpr(inner) => inner
+            .expr()
+            .is_some_and(|inner_expr| is_nested_call_expr(&inner_expr)),
+        _ => false,
+    }
+}
+
+fn check_no_nested_call_args(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| match node.kind() {
+            SyntaxKind::CALL_EXPR => {
+                let call = ast::CallExpr::cast(node.clone())?;
+                let has_nested = call.arg_list()?.args().any(|arg| is_nested_call_expr(&arg));
+                if !has_nested {
+                    return None;
+                }
+                let line = line_number(source, node.text_range().start().into());
+                Some(format!("line {line}: nested call argument"))
+            }
+            SyntaxKind::METHOD_CALL_EXPR => {
+                let call = ast::MethodCallExpr::cast(node.clone())?;
+                let has_nested = call.arg_list()?.args().any(|arg| is_nested_call_expr(&arg));
+                if !has_nested {
+                    return None;
+                }
+                let line = line_number(source, node.text_range().start().into());
+                Some(format!("line {line}: nested call argument"))
+            }
+            _ => None,
         })
         .collect()
 }
@@ -1337,6 +1394,20 @@ mod tests {
     fn no_expect_attr_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-attrs");
         let errors = check_no_expect_attr(&source, &ast, "src/main.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_nested_call_args_detects_violation() {
+        let (source, ast) = parse_fixture("no-nested-call-args");
+        let errors = check_no_nested_call_args(&source, &ast, "src/main.rs");
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_nested_call_args_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-nested-call-args");
+        let errors = check_no_nested_call_args(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 

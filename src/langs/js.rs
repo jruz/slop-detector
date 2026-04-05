@@ -3,7 +3,9 @@ use std::path::Path;
 
 use oxc::allocator::Allocator;
 use oxc::ast::AstKind;
-use oxc::ast::ast::{BindingPattern, Expression, LogicalOperator, TSType, TSTypeName};
+use oxc::ast::ast::{
+    Argument, BindingPattern, ChainElement, Expression, LogicalOperator, TSType, TSTypeName,
+};
 use oxc::parser::Parser;
 use oxc::span::SourceType;
 use oxc_ast_visit::{Visit, walk};
@@ -213,10 +215,50 @@ fn get_callee_text(expr: &oxc::ast::ast::CallExpression<'_>) -> String {
     }
 }
 
+fn is_nested_call_expression(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::CallExpression(_) => true,
+        Expression::AwaitExpression(inner) => is_nested_call_expression(&inner.argument),
+        Expression::ChainExpression(inner) => match &inner.expression {
+            ChainElement::CallExpression(_) => true,
+            ChainElement::TSNonNullExpression(non_null) => {
+                is_nested_call_expression(&non_null.expression)
+            }
+            _ => false,
+        },
+        Expression::ParenthesizedExpression(inner) => is_nested_call_expression(&inner.expression),
+        Expression::TSAsExpression(inner) => is_nested_call_expression(&inner.expression),
+        Expression::TSNonNullExpression(inner) => is_nested_call_expression(&inner.expression),
+        Expression::TSTypeAssertion(inner) => is_nested_call_expression(&inner.expression),
+        _ => false,
+    }
+}
+
+fn is_nested_call_argument(arg: &Argument<'_>) -> bool {
+    match arg {
+        Argument::SpreadElement(spread) => is_nested_call_expression(&spread.argument),
+        Argument::CallExpression(_) => true,
+        Argument::AwaitExpression(inner) => is_nested_call_expression(&inner.argument),
+        Argument::ChainExpression(inner) => match &inner.expression {
+            ChainElement::CallExpression(_) => true,
+            ChainElement::TSNonNullExpression(non_null) => {
+                is_nested_call_expression(&non_null.expression)
+            }
+            _ => false,
+        },
+        Argument::ParenthesizedExpression(inner) => is_nested_call_expression(&inner.expression),
+        Argument::TSAsExpression(inner) => is_nested_call_expression(&inner.expression),
+        Argument::TSNonNullExpression(inner) => is_nested_call_expression(&inner.expression),
+        Argument::TSTypeAssertion(inner) => is_nested_call_expression(&inner.expression),
+        _ => false,
+    }
+}
+
 struct TsVisitor<'src> {
     array_as_const_errors: Vec<String>,
     satisfies_errors: Vec<String>,
     console_errors: Vec<String>,
+    nested_call_arg_errors: Vec<String>,
     for_loop_errors: Vec<String>,
     inside_main: bool,
     inside_try: u32,
@@ -270,6 +312,12 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
 
     fn visit_call_expression(&mut self, expr: &oxc::ast::ast::CallExpression<'src>) {
         let callee_text = get_callee_text(expr);
+
+        if expr.arguments.iter().any(is_nested_call_argument) {
+            let line = line_number(self.source, expr.span.start);
+            self.nested_call_arg_errors
+                .push(format!("line {line}: nested call argument"));
+        }
 
         let is_logging_file = self.path.ends_with("/log.ts") || self.path.ends_with("/tracing.ts");
         if callee_text.starts_with("console.") && !self.inside_main && !is_logging_file {
@@ -405,6 +453,11 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
             Some("handle the error instead of providing a default"),
         ),
         (
+            "no-nested-call-args",
+            visitor.nested_call_arg_errors,
+            Some("assign the inner call to a const before passing it"),
+        ),
+        (
             "no-console",
             visitor.console_errors,
             Some("use log.ts or tracing.ts"),
@@ -442,6 +495,7 @@ fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
         array_as_const_errors: Vec::new(),
         satisfies_errors: Vec::new(),
         console_errors: Vec::new(),
+        nested_call_arg_errors: Vec::new(),
         for_loop_errors: Vec::new(),
         inside_main: false,
         inside_try: 0,
@@ -677,6 +731,19 @@ mod tests {
     fn no_console_allows_tracing_ts() {
         let violations = parse_ts_fixture_as("no-console", "src/tracing.ts");
         assert!(!has_violation(&violations, "no-console"));
+    }
+
+    #[test]
+    fn no_nested_call_args_detects_violation() {
+        let violations = parse_ts_fixture("no-nested-call-args");
+        assert!(has_violation(&violations, "no-nested-call-args"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_nested_call_args_allows_valid() {
+        let violations = parse_ts_fixture("valid-no-nested-call-args");
+        assert!(!has_violation(&violations, "no-nested-call-args"));
     }
 
     #[test]

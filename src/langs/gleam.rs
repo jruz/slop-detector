@@ -49,6 +49,11 @@ const GLEAM_RULES: &[GleamRule] = &[
         name: "no-map-error-discard",
     },
     GleamRule {
+        check: check_no_nested_call_args,
+        hint: Some("assign the inner call to a local before passing it"),
+        name: "no-nested-call-args",
+    },
+    GleamRule {
         check: check_no_ignored_error,
         hint: Some("handle or propagate the error; if the error is Nil use that instead of _"),
         name: "no-ignored-error",
@@ -683,6 +688,34 @@ fn check_no_map_error_discard(source: &str, tree: &Tree) -> Vec<String> {
     errors
 }
 
+fn check_no_nested_call_args(_source: &str, tree: &Tree) -> Vec<String> {
+    let mut errors = Vec::new();
+    let mut calls = Vec::new();
+    find_function_calls(tree.root_node(), &mut calls);
+
+    for call in calls {
+        let Some(arguments) = call.child_by_field_name("arguments") else {
+            continue;
+        };
+
+        let has_nested = arguments
+            .children(&mut arguments.walk())
+            .filter(|child| child.kind() == "argument")
+            .any(|argument| {
+                argument
+                    .child_by_field_name("value")
+                    .is_some_and(|value| value.kind() == "function_call")
+            });
+
+        if has_nested {
+            let line = call.start_position().row + 1;
+            errors.push(format!("line {line}: nested call argument"));
+        }
+    }
+
+    errors
+}
+
 fn is_unwrap_call(node: Node<'_>, source: &[u8]) -> bool {
     for child in node.children(&mut node.walk()) {
         if child.kind() == "field_access" {
@@ -1113,6 +1146,20 @@ mod tests {
     fn no_map_error_discard_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-map-error-discard.gleam");
         let errors = check_no_map_error_discard(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_nested_call_args_detects_violation() {
+        let (source, tree) = parse_fixture("no-nested-call-args.gleam");
+        let errors = check_no_nested_call_args(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_nested_call_args_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-nested-call-args.gleam");
+        let errors = check_no_nested_call_args(&source, &tree);
         assert!(errors.is_empty());
     }
 

@@ -59,6 +59,7 @@ slop-detector --create-config-for-violations
 
 ### Elixir
 - `no-inline-style` - Use CSS classes instead of inline styles
+- `no-nested-call-args` - Bind inner call results to locals before passing them
 - `pinned-dep-versions` - Pin dependency versions in mix.exs
 - `pinned-elixir-version` - Pin to exact matching the flake
 
@@ -69,6 +70,7 @@ slop-detector --create-config-for-violations
 - `no-error-passthrough` - Use `use value <- result.try(expr)` to avoid re-wrapping
 - `no-ignored-error` - Handle or propagate errors instead of ignoring
 - `no-let-assert-outside-main` - Use pattern matching or result.try instead
+- `no-nested-call-args` - Bind inner call results to locals before passing them
 - `no-map-error-discard` - Use case with explicit Nil pattern instead of discarding the error
 - `no-nested-if` - Use multi-pattern case or bool.guard to flatten
 - `no-nested-option` - Use `use value <- option.then(expr)` to flatten
@@ -80,6 +82,7 @@ slop-detector --create-config-for-violations
 - `no-array-as-const` - Declare the type instead of using `[...] as const`
 - `no-console` - Use log.ts or tracing.ts
 - `no-for-loop` - Use map, filter, or reduce instead of for loops
+- `no-nested-call-args` - Bind inner call results to consts before passing them
 - `no-throwing-fn-without-try` - Wrap throwing functions in try/catch
 - `no-interface` - Use type instead of interface
 - `no-scripts-section` - No scripts in package.json
@@ -98,6 +101,7 @@ slop-detector --create-config-for-violations
 - `no-recipe-deps` - Call dependencies explicitly with `just <recipe>` in the body
 
 ### Playwright
+- `no-nested-call-args` - Bind inner call results to consts before passing them
 - `no-page` - Use request for server tests, use page in client tests
 - `no-page-request` - Use page for client tests, use request in server tests
 - `no-request` - Use page for client tests, use request in server tests
@@ -121,6 +125,7 @@ slop-detector --create-config-for-violations
 - `no-map-err-discard` - Preserve original error in map_err
 - `no-map-or-else` - Use match or .ok_or_else() instead
 - `no-mem-forget` - Do not leak resources
+- `no-nested-call-args` - Bind inner call results to locals before passing them
 - `no-ok-and-propagate` - Use ? on Result directly, not .ok()?
 - `no-ok-method` - Handle error explicitly, don't discard with .ok()
 - `no-print-outside-main` - Keep print statements in main()
@@ -141,6 +146,7 @@ slop-detector --create-config-for-violations
 
 ### Swift
 - `no-guard-return` - Throw or log before returning instead of silently discarding
+- `no-nested-call-args` - Bind inner call results to lets before passing them
 - `no-silent-catch` - Handle the error instead of silently discarding it
 - `no-silent-if-let` - Throw or log before returning instead of silently discarding
 - `no-try-question-mark` - Use do/catch to handle errors instead of silencing them

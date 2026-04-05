@@ -21,6 +21,12 @@ const RULES: &[Rule] = &[
         name: "no-inline-style",
     },
     Rule {
+        check: check_no_nested_call_args,
+        filename: None,
+        hint: Some("assign the inner call to a local before passing it"),
+        name: "no-nested-call-args",
+    },
+    Rule {
         check: check_pinned_dep_versions,
         filename: Some("mix.exs"),
         hint: Some("pin to exact versions"),
@@ -46,6 +52,94 @@ fn check_no_inline_style(source: &str) -> Vec<String> {
         .map(|(offset, _)| {
             let line = line_number(source, offset);
             format!("line {line}: style=")
+        })
+        .collect()
+}
+
+fn is_ident_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || matches!(ch, '_' | '!' | '?')
+}
+
+fn is_call_open(chars: &[char], open_idx: usize) -> bool {
+    let mut rev = chars
+        .iter()
+        .take(open_idx)
+        .rev()
+        .skip_while(|ch| ch.is_whitespace());
+    let Some(prev) = rev.next().copied() else {
+        return false;
+    };
+
+    if prev == ')' {
+        return true;
+    }
+    if !is_ident_char(prev) {
+        return false;
+    }
+
+    for ch in rev {
+        if is_ident_char(*ch) || matches!(ch, '.' | ':' | '@') {
+            continue;
+        }
+        break;
+    }
+
+    true
+}
+
+fn line_has_nested_call_arg(line: &str) -> bool {
+    let chars: Vec<char> = line.chars().collect();
+    let mut paren_stack: Vec<bool> = Vec::new();
+    let mut active_quote: Option<char> = None;
+    let mut escaped = false;
+
+    for (idx, ch) in chars.iter().copied().enumerate() {
+        if let Some(quote) = active_quote {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == quote {
+                active_quote = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '#' => break,
+            '"' | '\'' => {
+                active_quote = Some(ch);
+            }
+            '(' => {
+                let is_call = is_call_open(&chars, idx);
+                if is_call && paren_stack.iter().any(|value| *value) {
+                    return true;
+                }
+                paren_stack.push(is_call);
+            }
+            ')' => {
+                paren_stack.pop();
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+fn check_no_nested_call_args(source: &str) -> Vec<String> {
+    source
+        .lines()
+        .enumerate()
+        .filter_map(|(idx, line)| {
+            if line_has_nested_call_arg(line) {
+                return Some(format!("line {}: nested call argument", idx + 1));
+            }
+            None
         })
         .collect()
 }
@@ -195,6 +289,20 @@ mod tests {
     fn no_inline_style_allows_valid() {
         let source = read_fixture("valid-no-inline-style", "ex");
         let errors = check_no_inline_style(&source);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_nested_call_args_detects_violation() {
+        let source = read_fixture("no-nested-call-args", "ex");
+        let errors = check_no_nested_call_args(&source);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_nested_call_args_allows_valid() {
+        let source = read_fixture("valid-no-nested-call-args", "ex");
+        let errors = check_no_nested_call_args(&source);
         assert!(errors.is_empty());
     }
 

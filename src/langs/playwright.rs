@@ -1,7 +1,7 @@
 use std::fs;
 
 use oxc::allocator::Allocator;
-use oxc::ast::ast::Expression;
+use oxc::ast::ast::{Argument, ChainElement, Expression};
 use oxc::parser::Parser;
 use oxc::span::SourceType;
 use oxc_ast_visit::{Visit, walk};
@@ -13,6 +13,7 @@ const PATTERNS: &[&str] = &["playwright/*.spec.ts"];
 const EXCLUDES: &[&str] = &["fixtures"];
 
 struct PlaywrightVisitor<'src> {
+    nested_call_arg_errors: Vec<String>,
     page_errors: Vec<String>,
     page_request_errors: Vec<String>,
     request_errors: Vec<String>,
@@ -44,6 +45,7 @@ fn line_number(source: &str, offset: u32) -> usize {
 
 fn create_visitor<'src>(source: &'src str, path: &'src str) -> PlaywrightVisitor<'src> {
     PlaywrightVisitor {
+        nested_call_arg_errors: Vec::new(),
         page_errors: Vec::new(),
         page_request_errors: Vec::new(),
         request_errors: Vec::new(),
@@ -52,7 +54,55 @@ fn create_visitor<'src>(source: &'src str, path: &'src str) -> PlaywrightVisitor
     }
 }
 
+fn is_nested_call_expression(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::CallExpression(_) => true,
+        Expression::AwaitExpression(inner) => is_nested_call_expression(&inner.argument),
+        Expression::ChainExpression(inner) => match &inner.expression {
+            ChainElement::CallExpression(_) => true,
+            ChainElement::TSNonNullExpression(non_null) => {
+                is_nested_call_expression(&non_null.expression)
+            }
+            _ => false,
+        },
+        Expression::ParenthesizedExpression(inner) => is_nested_call_expression(&inner.expression),
+        Expression::TSAsExpression(inner) => is_nested_call_expression(&inner.expression),
+        Expression::TSNonNullExpression(inner) => is_nested_call_expression(&inner.expression),
+        Expression::TSTypeAssertion(inner) => is_nested_call_expression(&inner.expression),
+        _ => false,
+    }
+}
+
+fn is_nested_call_argument(arg: &Argument<'_>) -> bool {
+    match arg {
+        Argument::SpreadElement(spread) => is_nested_call_expression(&spread.argument),
+        Argument::CallExpression(_) => true,
+        Argument::AwaitExpression(inner) => is_nested_call_expression(&inner.argument),
+        Argument::ChainExpression(inner) => match &inner.expression {
+            ChainElement::CallExpression(_) => true,
+            ChainElement::TSNonNullExpression(non_null) => {
+                is_nested_call_expression(&non_null.expression)
+            }
+            _ => false,
+        },
+        Argument::ParenthesizedExpression(inner) => is_nested_call_expression(&inner.expression),
+        Argument::TSAsExpression(inner) => is_nested_call_expression(&inner.expression),
+        Argument::TSNonNullExpression(inner) => is_nested_call_expression(&inner.expression),
+        Argument::TSTypeAssertion(inner) => is_nested_call_expression(&inner.expression),
+        _ => false,
+    }
+}
+
 impl<'src> Visit<'src> for PlaywrightVisitor<'src> {
+    fn visit_call_expression(&mut self, expr: &oxc::ast::ast::CallExpression<'src>) {
+        if expr.arguments.iter().any(is_nested_call_argument) {
+            let line = line_number(self.source, expr.span.start);
+            self.nested_call_arg_errors
+                .push(format!("line {line}: nested call argument"));
+        }
+        walk::walk_call_expression(self, expr);
+    }
+
     fn visit_expression(&mut self, expr: &Expression<'src>) {
         if let Expression::StaticMemberExpression(member) = expr
             && let Expression::Identifier(id) = &member.object
@@ -83,7 +133,11 @@ fn collect_violations(visitor: &PlaywrightVisitor<'_>) -> Vec<Violation> {
     let is_client = visitor.path.contains("playwright/client/");
     let is_server = visitor.path.contains("playwright/server/");
 
-    let mut rules: Vec<(&str, &Vec<String>, Option<&str>)> = Vec::new();
+    let mut rules: Vec<(&str, &Vec<String>, Option<&str>)> = vec![(
+        "no-nested-call-args",
+        &visitor.nested_call_arg_errors,
+        Some("assign the inner call to a const before passing it"),
+    )];
 
     if is_client {
         rules.push((
@@ -196,7 +250,6 @@ mod tests {
     fn no_request_detects_violation() {
         let violations = parse_fixture_as("no-request", "playwright/client/test.spec.ts");
         assert!(has_violation(&violations, "no-request"));
-        assert_eq!(violations.len(), 1);
     }
 
     #[test]
@@ -209,7 +262,6 @@ mod tests {
     fn no_page_request_detects_violation() {
         let violations = parse_fixture_as("no-page-request", "playwright/client/test.spec.ts");
         assert!(has_violation(&violations, "no-page-request"));
-        assert_eq!(violations.len(), 1);
     }
 
     #[test]
@@ -230,5 +282,24 @@ mod tests {
     fn no_page_allows_valid() {
         let violations = parse_fixture_as("valid-no-page", "playwright/server/test.spec.ts");
         assert!(!has_violation(&violations, "no-page"));
+    }
+
+    #[test]
+    fn no_nested_call_args_detects_violation() {
+        let violations = parse_fixture_as(
+            "no-nested-call-args",
+            "playwright/server/no-nested-call-args.spec.ts",
+        );
+        assert!(has_violation(&violations, "no-nested-call-args"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_nested_call_args_allows_valid() {
+        let violations = parse_fixture_as(
+            "valid-no-nested-call-args",
+            "playwright/server/valid-no-nested-call-args.spec.ts",
+        );
+        assert!(!has_violation(&violations, "no-nested-call-args"));
     }
 }

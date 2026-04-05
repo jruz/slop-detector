@@ -35,6 +35,11 @@ const RULES: &[Rule] = &[
         hint: Some("use do/catch to handle errors instead of silencing them"),
         name: "no-try-question-mark",
     },
+    Rule {
+        check: check_no_nested_call_args,
+        hint: Some("assign the inner call to a let before passing it"),
+        name: "no-nested-call-args",
+    },
 ];
 
 struct ParsedSwift {
@@ -207,6 +212,40 @@ fn check_no_try_question_mark(source: &str, tree: &Tree) -> Vec<String> {
     errors
 }
 
+fn check_no_nested_call_args(_source: &str, tree: &Tree) -> Vec<String> {
+    let mut calls = Vec::new();
+    find_nodes_by_kind(tree.root_node(), "call_expression", &mut calls);
+
+    let mut errors = Vec::new();
+    for node in &calls {
+        let has_nested = node
+            .children(&mut node.walk())
+            .find(|child| child.kind() == "call_suffix")
+            .is_some_and(|suffix| {
+                suffix
+                    .children(&mut suffix.walk())
+                    .find(|child| child.kind() == "value_arguments")
+                    .is_some_and(|arguments| {
+                        arguments
+                            .children(&mut arguments.walk())
+                            .filter(|child| child.kind() == "value_argument")
+                            .any(|argument| {
+                                argument
+                                    .child_by_field_name("value")
+                                    .is_some_and(|value| value.kind() == "call_expression")
+                            })
+                    })
+            });
+
+        if has_nested {
+            let line = node.start_position().row + 1;
+            errors.push(format!("line {line}: nested call argument"));
+        }
+    }
+
+    errors
+}
+
 fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
     match find_files(patterns, excludes) {
         Ok(found) => (found, vec![]),
@@ -356,6 +395,20 @@ mod tests {
     fn no_try_question_mark_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-try-question-mark.swift");
         let errors = check_no_try_question_mark(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_nested_call_args_detects_violation() {
+        let (source, tree) = parse_fixture("no-nested-call-args.swift");
+        let errors = check_no_nested_call_args(&source, &tree);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_nested_call_args_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-nested-call-args.swift");
+        let errors = check_no_nested_call_args(&source, &tree);
         assert!(errors.is_empty());
     }
 }
