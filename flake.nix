@@ -5,17 +5,29 @@
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-25.11";
     rust-overlay.url = "github:oxalica/rust-overlay";
     flake-utils.url = "github:numtide/flake-utils";
+    nu-lint = {
+      url = "git+https://codeberg.org/wvhulle/nu-lint?ref=refs/tags/v0.1.1";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+      inputs.rust-overlay.follows = "rust-overlay";
+    };
   };
 
-  outputs = { nixpkgs, rust-overlay, flake-utils, ... }:
+  outputs = {
+    nixpkgs,
+    rust-overlay,
+    flake-utils,
+    nu-lint,
+    ...
+  }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
-        nu-lint = import ./nu-lint.nix { inherit pkgs; };
         rustToolchain = builtins.fromTOML (builtins.readFile ./rust-toolchain.toml);
         rustVersion = rustToolchain.toolchain.channel;
         rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        nu-lint-package = nu-lint.packages.${system}.default;
         commonPackages = with pkgs; [
           bun
           cargo-edit
@@ -24,7 +36,7 @@
           cargo-watch
           fd
           just
-          nu-lint
+          nu-lint-package
           nushell
           ripgrep
           rust
