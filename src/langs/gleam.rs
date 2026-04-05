@@ -98,7 +98,8 @@ struct ParsedGleamToml {
 
 fn create_parser() -> Result<Parser, tree_sitter::LanguageError> {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_gleam::LANGUAGE.into())?;
+    let language = tree_sitter_gleam::LANGUAGE.into();
+    parser.set_language(&language)?;
     Ok(parser)
 }
 
@@ -106,9 +107,12 @@ fn get_constructor_name<'tree>(
     node: Node<'tree>,
     source: &'tree [u8],
 ) -> Result<Option<&'tree str>, std::str::Utf8Error> {
-    for child in node.children(&mut node.walk()) {
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
         if child.kind() == "constructor_name" {
-            return Ok(Some(child.utf8_text(source)?));
+            let name = child.utf8_text(source)?;
+            let constructor_name = Some(name);
+            return Ok(constructor_name);
         }
     }
     Ok(None)
@@ -118,21 +122,27 @@ fn extract_error_binding<'tree>(
     pattern_node: Node<'tree>,
     source: &'tree [u8],
 ) -> Result<Option<&'tree str>, std::str::Utf8Error> {
-    for child in pattern_node.children(&mut pattern_node.walk()) {
+    let mut pattern_walker = pattern_node.walk();
+    for child in pattern_node.children(&mut pattern_walker) {
         if child.kind() == "case_clause_pattern" {
-            for inner in child.children(&mut child.walk()) {
-                if inner.kind() == "record_pattern"
-                    && get_constructor_name(inner, source)? == Some("Error")
-                {
-                    for arg_container in inner.children(&mut inner.walk()) {
+            let mut child_walker = child.walk();
+            for inner in child.children(&mut child_walker) {
+                let constructor_name = get_constructor_name(inner, source)?;
+                if inner.kind() == "record_pattern" && constructor_name == Some("Error") {
+                    let mut inner_walker = inner.walk();
+                    for arg_container in inner.children(&mut inner_walker) {
                         if arg_container.kind() == "record_pattern_arguments" {
-                            for arg in arg_container.children(&mut arg_container.walk()) {
+                            let mut arguments_walker = arg_container.walk();
+                            for arg in arg_container.children(&mut arguments_walker) {
                                 if arg.kind() == "record_pattern_argument" {
-                                    for binding in arg.children(&mut arg.walk()) {
+                                    let mut arg_walker = arg.walk();
+                                    for binding in arg.children(&mut arg_walker) {
                                         if binding.kind() == "discard"
                                             || binding.kind() == "identifier"
                                         {
-                                            return Ok(Some(binding.utf8_text(source)?));
+                                            let binding_name = binding.utf8_text(source)?;
+                                            let error_binding = Some(binding_name);
+                                            return Ok(error_binding);
                                         }
                                     }
                                 }
@@ -150,7 +160,8 @@ fn find_case_clauses<'tree>(node: Node<'tree>, clauses: &mut Vec<Node<'tree>>) {
     if node.kind() == "case_clause" {
         clauses.push(node);
     }
-    for child in node.children(&mut node.walk()) {
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
         find_case_clauses(child, clauses);
     }
 }
@@ -159,13 +170,16 @@ fn has_all_discarded_fields(node: Node<'_>) -> bool {
     let mut has_arguments = false;
     let mut all_discards = true;
 
-    for child in node.children(&mut node.walk()) {
+    let mut node_walker = node.walk();
+    for child in node.children(&mut node_walker) {
         if child.kind() == "record_pattern_arguments" {
-            for arg in child.children(&mut child.walk()) {
+            let mut arguments_walker = child.walk();
+            for arg in child.children(&mut arguments_walker) {
                 if arg.kind() == "record_pattern_argument" {
                     has_arguments = true;
                     let mut is_discard = false;
-                    for inner in arg.children(&mut arg.walk()) {
+                    let mut arg_walker = arg.walk();
+                    for inner in arg.children(&mut arg_walker) {
                         if inner.kind() == "discard" {
                             is_discard = true;
                             break;
@@ -188,23 +202,29 @@ fn find_discarded_error_fields(
 ) -> Result<Vec<(usize, String)>, std::str::Utf8Error> {
     let mut results = Vec::new();
 
-    for child in clause.children(&mut clause.walk()) {
+    let mut clause_walker = clause.walk();
+    for child in clause.children(&mut clause_walker) {
         if child.kind() == "case_clause_patterns" {
-            for pattern in child.children(&mut child.walk()) {
+            let mut patterns_walker = child.walk();
+            for pattern in child.children(&mut patterns_walker) {
                 if pattern.kind() == "case_clause_pattern" {
-                    for inner in pattern.children(&mut pattern.walk()) {
-                        if inner.kind() == "record_pattern"
-                            && get_constructor_name(inner, source)? == Some("Error")
-                        {
-                            for arg_container in inner.children(&mut inner.walk()) {
+                    let mut branch_walker = pattern.walk();
+                    for inner in pattern.children(&mut branch_walker) {
+                        let constructor_name = get_constructor_name(inner, source)?;
+                        if inner.kind() == "record_pattern" && constructor_name == Some("Error") {
+                            let mut inner_walker = inner.walk();
+                            for arg_container in inner.children(&mut inner_walker) {
                                 if arg_container.kind() == "record_pattern_arguments" {
-                                    for arg in arg_container.children(&mut arg_container.walk()) {
+                                    let mut arguments_walker = arg_container.walk();
+                                    for arg in arg_container.children(&mut arguments_walker) {
                                         if arg.kind() == "record_pattern_argument" {
-                                            for binding in arg.children(&mut arg.walk()) {
+                                            let mut arg_walker = arg.walk();
+                                            for binding in arg.children(&mut arg_walker) {
+                                                let binding_constructor =
+                                                    get_constructor_name(binding, source)?;
                                                 if binding.kind() == "record_pattern"
                                                     && has_all_discarded_fields(binding)
-                                                    && let Some(name) =
-                                                        get_constructor_name(binding, source)?
+                                                    && let Some(name) = binding_constructor
                                                 {
                                                     let line = binding.start_position().row + 1;
                                                     results.push((line, name.to_string()));
@@ -227,7 +247,8 @@ fn find_discarded_error_fields(
 fn check_no_discarded_error_fields(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
     let mut clauses = Vec::new();
-    find_case_clauses(tree.root_node(), &mut clauses);
+    let root = tree.root_node();
+    find_case_clauses(root, &mut clauses);
 
     let mut errors = Vec::new();
     for clause in clauses {
@@ -253,7 +274,8 @@ fn check_clause_for_error_passthrough(
     let mut body_node = None;
     let mut found_arrow = false;
 
-    for child in clause.children(&mut clause.walk()) {
+    let mut clause_walker = clause.walk();
+    for child in clause.children(&mut clause_walker) {
         match child.kind() {
             "case_clause_patterns" => patterns_node = Some(child),
             "->" => found_arrow = true,
@@ -279,9 +301,9 @@ fn check_clause_for_error_passthrough(
 
     if body_str.trim() == expected {
         let line = clause.start_position().row + 1;
-        return Ok(Some(format!(
-            "line {line}: Error({binding}) -> Error({binding})"
-        )));
+        let message = format!("line {line}: Error({binding}) -> Error({binding})");
+        let passthrough = Some(message);
+        return Ok(passthrough);
     }
 
     Ok(None)
@@ -290,7 +312,8 @@ fn check_clause_for_error_passthrough(
 fn check_no_error_passthrough(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
     let mut clauses = Vec::new();
-    find_case_clauses(tree.root_node(), &mut clauses);
+    let root = tree.root_node();
+    find_case_clauses(root, &mut clauses);
 
     let mut errors = Vec::new();
     for clause in clauses {
@@ -313,7 +336,8 @@ fn check_clause_for_ignored_error(
     let mut body_node = None;
     let mut found_arrow = false;
 
-    for child in clause.children(&mut clause.walk()) {
+    let mut clause_walker = clause.walk();
+    for child in clause.children(&mut clause_walker) {
         match child.kind() {
             "case_clause_patterns" => patterns_node = Some(child),
             "->" => found_arrow = true,
@@ -341,7 +365,9 @@ fn check_clause_for_ignored_error(
 
     if is_discarded || is_unused {
         let line = clause.start_position().row + 1;
-        return Ok(Some(format!("line {line}: Error({binding}) not used")));
+        let message = format!("line {line}: Error({binding}) not used");
+        let ignored_error = Some(message);
+        return Ok(ignored_error);
     }
 
     Ok(None)
@@ -350,7 +376,8 @@ fn check_clause_for_ignored_error(
 fn check_no_ignored_error(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
     let mut clauses = Vec::new();
-    find_case_clauses(tree.root_node(), &mut clauses);
+    let root = tree.root_node();
+    find_case_clauses(root, &mut clauses);
 
     let mut errors = Vec::new();
     for clause in clauses {
@@ -369,7 +396,8 @@ fn find_function_calls<'tree>(node: Node<'tree>, calls: &mut Vec<Node<'tree>>) {
     if node.kind() == "function_call" {
         calls.push(node);
     }
-    for child in node.children(&mut node.walk()) {
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
         find_function_calls(child, calls);
     }
 }
@@ -378,24 +406,30 @@ fn find_case_expressions<'tree>(node: Node<'tree>, cases: &mut Vec<Node<'tree>>)
     if node.kind() == "case" {
         cases.push(node);
     }
-    for child in node.children(&mut node.walk()) {
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
         find_case_expressions(child, cases);
     }
 }
 
 fn case_has_pattern(node: Node<'_>, source: &[u8], pattern_name: &str) -> bool {
-    for child in node.children(&mut node.walk()) {
+    let mut node_walker = node.walk();
+    for child in node.children(&mut node_walker) {
         if child.kind() == "case_clauses" {
-            for clause in child.children(&mut child.walk()) {
+            let mut clauses_walker = child.walk();
+            for clause in child.children(&mut clauses_walker) {
                 if clause.kind() == "case_clause" {
-                    for part in clause.children(&mut clause.walk()) {
+                    let mut item_walker = clause.walk();
+                    for part in clause.children(&mut item_walker) {
                         if part.kind() == "case_clause_patterns" {
-                            for pattern in part.children(&mut part.walk()) {
+                            let mut patterns_walker = part.walk();
+                            for pattern in part.children(&mut patterns_walker) {
                                 if pattern.kind() == "case_clause_pattern" {
-                                    for inner in pattern.children(&mut pattern.walk()) {
+                                    let mut record_walker = pattern.walk();
+                                    for inner in pattern.children(&mut record_walker) {
+                                        let constructor_name = get_constructor_name(inner, source);
                                         if inner.kind() == "record_pattern"
-                                            && let Ok(Some(name)) =
-                                                get_constructor_name(inner, source)
+                                            && let Ok(Some(name)) = constructor_name
                                             && name == pattern_name
                                         {
                                             return true;
@@ -426,7 +460,8 @@ fn find_cases_in_body<'tree>(
         cases.push(body);
         return;
     }
-    for child in body.children(&mut body.walk()) {
+    let mut body_walker = body.walk();
+    for child in body.children(&mut body_walker) {
         if child.kind() == "case"
             && case_has_pattern(child, source, ok_pattern)
             && case_has_pattern(child, source, err_pattern)
@@ -445,12 +480,15 @@ fn find_nested_cases_in_case<'tree>(
     ok_pattern: &str,
     err_pattern: &str,
 ) {
-    for child in case_node.children(&mut case_node.walk()) {
+    let mut case_walker = case_node.walk();
+    for child in case_node.children(&mut case_walker) {
         if child.kind() == "case_clauses" {
-            for clause in child.children(&mut child.walk()) {
+            let mut clauses_walker = child.walk();
+            for clause in child.children(&mut clauses_walker) {
                 if clause.kind() == "case_clause" {
                     let mut found_arrow = false;
-                    for part in clause.children(&mut clause.walk()) {
+                    let mut body_walker = clause.walk();
+                    for part in clause.children(&mut body_walker) {
                         match (part.kind(), found_arrow) {
                             ("->", _) => found_arrow = true,
                             (_, true) => {
@@ -475,7 +513,8 @@ fn check_nested_case(
     let source_bytes = source.as_bytes();
 
     let mut cases = Vec::new();
-    find_case_expressions(tree.root_node(), &mut cases);
+    let root = tree.root_node();
+    find_case_expressions(root, &mut cases);
 
     let top_level_cases: Vec<_> = cases
         .iter()
@@ -517,7 +556,8 @@ fn find_bool_cases_in_body<'tree>(body: Node<'tree>, cases: &mut Vec<Node<'tree>
         cases.push(body);
         return;
     }
-    for child in body.children(&mut body.walk()) {
+    let mut body_walker = body.walk();
+    for child in body.children(&mut body_walker) {
         if child.kind() == "case" && case_is_bool_match(child, source) {
             cases.push(child);
         } else {
@@ -531,12 +571,15 @@ fn find_nested_bool_cases<'tree>(
     nested: &mut Vec<Node<'tree>>,
     source: &[u8],
 ) {
-    for child in case_node.children(&mut case_node.walk()) {
+    let mut case_walker = case_node.walk();
+    for child in case_node.children(&mut case_walker) {
         if child.kind() == "case_clauses" {
-            for clause in child.children(&mut child.walk()) {
+            let mut clauses_walker = child.walk();
+            for clause in child.children(&mut clauses_walker) {
                 if clause.kind() == "case_clause" {
                     let mut found_arrow = false;
-                    for part in clause.children(&mut clause.walk()) {
+                    let mut body_walker = clause.walk();
+                    for part in clause.children(&mut body_walker) {
                         match (part.kind(), found_arrow) {
                             ("->", _) => found_arrow = true,
                             (_, true) => find_bool_cases_in_body(part, nested, source),
@@ -554,7 +597,8 @@ fn check_no_nested_if(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
 
     let mut cases = Vec::new();
-    find_case_expressions(tree.root_node(), &mut cases);
+    let root = tree.root_node();
+    find_case_expressions(root, &mut cases);
 
     let top_level_bool_cases: Vec<_> = cases
         .iter()
@@ -575,11 +619,13 @@ fn check_no_nested_if(source: &str, tree: &Tree) -> Vec<String> {
 }
 
 fn is_map_error_call(node: Node<'_>, source: &[u8]) -> bool {
-    for child in node.children(&mut node.walk()) {
+    let mut node_walker = node.walk();
+    for child in node.children(&mut node_walker) {
         if child.kind() == "field_access" {
             let mut has_result = false;
             let mut has_map_error = false;
-            for inner in child.children(&mut child.walk()) {
+            let mut child_walker = child.walk();
+            for inner in child.children(&mut child_walker) {
                 if inner.kind() == "identifier"
                     && let Ok(text) = inner.utf8_text(source)
                     && text == "result"
@@ -606,7 +652,8 @@ fn body_has_identifier(node: Node<'_>, source: &[u8], name: &str) -> bool {
     {
         return true;
     }
-    for child in node.children(&mut node.walk()) {
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
         if body_has_identifier(child, source, name) {
             return true;
         }
@@ -615,11 +662,13 @@ fn body_has_identifier(node: Node<'_>, source: &[u8], name: &str) -> bool {
 }
 
 fn fn_param_is_discarded_or_unused(node: Node<'_>, source: &[u8]) -> bool {
-    for child in node.children(&mut node.walk()) {
+    let mut node_walker = node.walk();
+    for child in node.children(&mut node_walker) {
         if child.kind() != "argument" {
             continue;
         }
-        for inner in child.children(&mut child.walk()) {
+        let mut child_walker = child.walk();
+        for inner in child.children(&mut child_walker) {
             if inner.kind() != "anonymous_function" {
                 continue;
             }
@@ -627,18 +676,22 @@ fn fn_param_is_discarded_or_unused(node: Node<'_>, source: &[u8]) -> bool {
             let mut is_discard = false;
             let mut body_node: Option<Node<'_>> = None;
 
-            for part in inner.children(&mut inner.walk()) {
+            let mut inner_walker = inner.walk();
+            for part in inner.children(&mut inner_walker) {
                 if part.kind() == "function_parameters" {
-                    for fp in part.children(&mut part.walk()) {
+                    let mut params_walker = part.walk();
+                    for fp in part.children(&mut params_walker) {
                         if fp.kind() == "function_parameter" {
-                            for binding in fp.children(&mut fp.walk()) {
+                            let mut fp_walker = fp.walk();
+                            for binding in fp.children(&mut fp_walker) {
                                 if binding.kind() == "discard" {
                                     is_discard = true;
                                 }
                                 if binding.kind() == "identifier"
                                     && let Ok(text) = binding.utf8_text(source)
                                 {
-                                    param_name = Some(text.to_string());
+                                    let parameter_name = text.to_string();
+                                    param_name = Some(parameter_name);
                                 }
                             }
                         }
@@ -668,11 +721,13 @@ fn check_no_map_error_discard(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
 
     let mut calls = Vec::new();
-    find_function_calls(tree.root_node(), &mut calls);
+    let root = tree.root_node();
+    find_function_calls(root, &mut calls);
 
     for call in calls {
         if is_map_error_call(call, source_bytes) {
-            for child in call.children(&mut call.walk()) {
+            let mut call_walker = call.walk();
+            for child in call.children(&mut call_walker) {
                 if child.kind() == "arguments"
                     && fn_param_is_discarded_or_unused(child, source_bytes)
                 {
@@ -691,15 +746,17 @@ fn check_no_map_error_discard(source: &str, tree: &Tree) -> Vec<String> {
 fn check_no_nested_call_args(_source: &str, tree: &Tree) -> Vec<String> {
     let mut errors = Vec::new();
     let mut calls = Vec::new();
-    find_function_calls(tree.root_node(), &mut calls);
+    let root = tree.root_node();
+    find_function_calls(root, &mut calls);
 
     for call in calls {
         let Some(arguments) = call.child_by_field_name("arguments") else {
             continue;
         };
 
+        let mut arguments_walker = arguments.walk();
         let has_nested = arguments
-            .children(&mut arguments.walk())
+            .children(&mut arguments_walker)
             .filter(|child| child.kind() == "argument")
             .any(|argument| {
                 argument
@@ -717,9 +774,11 @@ fn check_no_nested_call_args(_source: &str, tree: &Tree) -> Vec<String> {
 }
 
 fn is_unwrap_call(node: Node<'_>, source: &[u8]) -> bool {
-    for child in node.children(&mut node.walk()) {
+    let mut node_walker = node.walk();
+    for child in node.children(&mut node_walker) {
         if child.kind() == "field_access" {
-            for inner in child.children(&mut child.walk()) {
+            let mut child_walker = child.walk();
+            for inner in child.children(&mut child_walker) {
                 if inner.kind() == "label"
                     && let Ok(text) = inner.utf8_text(source)
                 {
@@ -738,7 +797,8 @@ fn check_no_unwrap(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
 
     let mut calls = Vec::new();
-    find_function_calls(tree.root_node(), &mut calls);
+    let root = tree.root_node();
+    find_function_calls(root, &mut calls);
 
     for call in calls {
         if is_unwrap_call(call, source_bytes) {
@@ -754,7 +814,8 @@ fn find_let_asserts<'tree>(node: Node<'tree>, asserts: &mut Vec<Node<'tree>>) {
     if node.kind() == "let_assert" {
         asserts.push(node);
     }
-    for child in node.children(&mut node.walk()) {
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
         find_let_asserts(child, asserts);
     }
 }
@@ -774,7 +835,8 @@ fn get_containing_function_name<'tree>(
             let start = current.start_byte();
             let end = current.end_byte();
             if target_start >= start && target_end <= end {
-                for child in current.children(&mut current.walk()) {
+                let mut current_walker = current.walk();
+                for child in current.children(&mut current_walker) {
                     if child.kind() == "identifier"
                         && let Ok(text) = child.utf8_text(source)
                     {
@@ -783,7 +845,8 @@ fn get_containing_function_name<'tree>(
                 }
             }
         }
-        for child in current.children(&mut current.walk()) {
+        let mut current_walker = current.walk();
+        for child in current.children(&mut current_walker) {
             if let Some(name) = find_function_containing(child, target_start, target_end, source) {
                 return Some(name);
             }
@@ -791,7 +854,9 @@ fn get_containing_function_name<'tree>(
         None
     }
 
-    find_function_containing(root, node.start_byte(), node.end_byte(), source)
+    let start = node.start_byte();
+    let end = node.end_byte();
+    find_function_containing(root, start, end, source)
 }
 
 fn check_no_let_assert_outside_main(source: &str, tree: &Tree) -> Vec<String> {
@@ -814,14 +879,21 @@ fn check_no_let_assert_outside_main(source: &str, tree: &Tree) -> Vec<String> {
 }
 
 fn let_assert_has_discarded_ok(node: Node<'_>, source: &[u8]) -> bool {
-    for child in node.children(&mut node.walk()) {
-        if child.kind() == "record_pattern" && get_constructor_name(child, source) == Ok(Some("Ok"))
-        {
-            for args in child.children(&mut child.walk()) {
+    let mut node_walker = node.walk();
+    for child in node.children(&mut node_walker) {
+        let constructor_name = get_constructor_name(child, source);
+        let ok_pattern = Some("Ok");
+        let expected_constructor = Ok(ok_pattern);
+        let is_ok_pattern = constructor_name == expected_constructor;
+        if child.kind() == "record_pattern" && is_ok_pattern {
+            let mut child_walker = child.walk();
+            for args in child.children(&mut child_walker) {
                 if args.kind() == "record_pattern_arguments" {
-                    for arg in args.children(&mut args.walk()) {
+                    let mut args_walker = args.walk();
+                    for arg in args.children(&mut args_walker) {
                         if arg.kind() == "record_pattern_argument" {
-                            for binding in arg.children(&mut arg.walk()) {
+                            let mut binding_walker = arg.walk();
+                            for binding in arg.children(&mut binding_walker) {
                                 if binding.kind() == "discard" {
                                     return true;
                                 }
@@ -840,7 +912,8 @@ fn check_no_discarded_ok(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
 
     let mut asserts = Vec::new();
-    find_let_asserts(tree.root_node(), &mut asserts);
+    let root = tree.root_node();
+    find_let_asserts(root, &mut asserts);
 
     for assert_node in asserts {
         if let_assert_has_discarded_ok(assert_node, source_bytes) {
@@ -875,7 +948,10 @@ fn check_exact_versions(toml: &toml::Value, _path: &str) -> Vec<String> {
 
         for (name, value) in deps {
             let version = match value {
-                toml::Value::String(ver) => Some(ver.as_str()),
+                toml::Value::String(ver) => {
+                    let version_str = ver.as_str();
+                    Some(version_str)
+                }
                 toml::Value::Table(table) => table.get("version").and_then(toml::Value::as_str),
                 _ => None,
             };
@@ -1010,7 +1086,8 @@ pub fn check() -> CheckResult {
     errors.extend(toml_errors);
 
     let mut violations = run_gleam_rules(&parsed_gleam, GLEAM_RULES);
-    violations.extend(run_gleam_toml_rules(&parsed_tomls, GLEAM_TOML_RULES));
+    let toml_violations = run_gleam_toml_rules(&parsed_tomls, GLEAM_TOML_RULES);
+    violations.extend(toml_violations);
 
     CheckResult {
         errors,

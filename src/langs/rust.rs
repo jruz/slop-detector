@@ -236,7 +236,10 @@ fn check_pinned_versions(toml: &toml::Value) -> Vec<String> {
 
         for (name, value) in deps {
             let version = match value {
-                toml::Value::String(ver) => Some(ver.as_str()),
+                toml::Value::String(ver) => {
+                    let version_str = ver.as_str();
+                    Some(version_str)
+                }
                 toml::Value::Table(table) => table.get("version").and_then(toml::Value::as_str),
                 _ => None,
             };
@@ -266,7 +269,10 @@ fn check_no_allow_attr(source: &str, ast: &SourceFile, _path: &str) -> Vec<Strin
             if path.to_string() != ALLOW_ATTR {
                 return None;
             }
-            let line = line_number(source, attr.syntax().text_range().start().into());
+            let syntax = attr.syntax();
+            let start = syntax.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: #[{ALLOW_ATTR}(...)]"))
         })
         .collect()
@@ -279,7 +285,8 @@ fn check_no_catch_unwind(source: &str, ast: &SourceFile, _path: &str) -> Vec<Str
             if node.kind() != SyntaxKind::CALL_EXPR {
                 return None;
             }
-            let call = ast::CallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let call = ast::CallExpr::cast(syntax_node)?;
             let expr = call.expr()?;
             let text = expr.to_string();
             let is_catch_unwind = text == "catch_unwind"
@@ -288,7 +295,9 @@ fn check_no_catch_unwind(source: &str, ast: &SourceFile, _path: &str) -> Vec<Str
             if !is_catch_unwind {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: catch_unwind()"))
         })
         .collect()
@@ -313,7 +322,10 @@ fn check_no_cfg_attr_suppress(source: &str, ast: &SourceFile, _path: &str) -> Ve
             if !has_allow && !has_expect {
                 return None;
             }
-            let line = line_number(source, attr.syntax().text_range().start().into());
+            let syntax = attr.syntax();
+            let start = syntax.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             let suppressed = if has_allow { ALLOW_ATTR } else { "expect" };
             Some(format!("line {line}: #[cfg_attr(..., {suppressed}(...))]"))
         })
@@ -334,7 +346,8 @@ fn check_no_discard_result(source: &str, ast: &SourceFile, _path: &str) -> Vec<S
             if node.kind() != SyntaxKind::LET_STMT {
                 return None;
             }
-            let let_stmt = ast::LetStmt::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let let_stmt = ast::LetStmt::cast(syntax_node)?;
             let pat = let_stmt.pat()?;
             let is_wildcard = matches!(pat, ast::Pat::WildcardPat(_));
             let is_underscore_ident = matches!(&pat, ast::Pat::IdentPat(ident) if {
@@ -352,7 +365,9 @@ fn check_no_discard_result(source: &str, ast: &SourceFile, _path: &str) -> Vec<S
                     return None;
                 }
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             let binding = match &pat {
                 ast::Pat::IdentPat(ident) => match ident.name() {
                     Some(n) => n.text().to_string(),
@@ -372,7 +387,8 @@ fn check_no_discard_try_value(source: &str, ast: &SourceFile, _path: &str) -> Ve
             if node.kind() != SyntaxKind::LET_STMT {
                 return None;
             }
-            let let_stmt = ast::LetStmt::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let let_stmt = ast::LetStmt::cast(syntax_node)?;
             let pat = let_stmt.pat()?;
             let is_wildcard = matches!(pat, ast::Pat::WildcardPat(_));
             let is_underscore_ident = matches!(&pat, ast::Pat::IdentPat(ident) if {
@@ -385,7 +401,9 @@ fn check_no_discard_try_value(source: &str, ast: &SourceFile, _path: &str) -> Ve
             if !matches!(init, ast::Expr::TryExpr(_)) {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             let binding = match &pat {
                 ast::Pat::IdentPat(ident) => match ident.name() {
                     Some(n) => n.text().to_string(),
@@ -405,7 +423,8 @@ fn check_no_drop_result(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
             if node.kind() != SyntaxKind::CALL_EXPR {
                 return None;
             }
-            let call = ast::CallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let call = ast::CallExpr::cast(syntax_node)?;
             let expr = call.expr()?;
             if expr.to_string() != "drop" {
                 return None;
@@ -413,7 +432,9 @@ fn check_no_drop_result(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
             let arg_list = call.arg_list()?;
             let first_arg = arg_list.args().next()?;
             if let ast::Expr::CallExpr(_) = first_arg {
-                let line = line_number(source, node.text_range().start().into());
+                let start = node.text_range().start();
+                let offset: usize = start.into();
+                let line = line_number(source, offset);
                 return Some(format!("line {line}: drop(...)"));
             }
             None
@@ -451,21 +472,27 @@ fn check_no_nested_call_args(source: &str, ast: &SourceFile, _path: &str) -> Vec
         .descendants()
         .filter_map(|node| match node.kind() {
             SyntaxKind::CALL_EXPR => {
-                let call = ast::CallExpr::cast(node.clone())?;
+                let syntax_node = node.clone();
+                let call = ast::CallExpr::cast(syntax_node)?;
                 let has_nested = call.arg_list()?.args().any(|arg| is_nested_call_expr(&arg));
                 if !has_nested {
                     return None;
                 }
-                let line = line_number(source, node.text_range().start().into());
+                let start = node.text_range().start();
+                let offset: usize = start.into();
+                let line = line_number(source, offset);
                 Some(format!("line {line}: nested call argument"))
             }
             SyntaxKind::METHOD_CALL_EXPR => {
-                let call = ast::MethodCallExpr::cast(node.clone())?;
+                let syntax_node = node.clone();
+                let call = ast::MethodCallExpr::cast(syntax_node)?;
                 let has_nested = call.arg_list()?.args().any(|arg| is_nested_call_expr(&arg));
                 if !has_nested {
                     return None;
                 }
-                let line = line_number(source, node.text_range().start().into());
+                let start = node.text_range().start();
+                let offset: usize = start.into();
+                let line = line_number(source, offset);
                 Some(format!("line {line}: nested call argument"))
             }
             _ => None,
@@ -485,7 +512,10 @@ fn check_no_expect_attr(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
             if path.to_string() != "expect" {
                 return None;
             }
-            let line = line_number(source, attr.syntax().text_range().start().into());
+            let syntax = attr.syntax();
+            let start = syntax.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: #[expect(...)]"))
         })
         .collect()
@@ -496,7 +526,8 @@ fn is_inside_test_module(node: &ra_ap_syntax::SyntaxNode) -> bool {
         if ancestor.kind() != SyntaxKind::MODULE {
             return false;
         }
-        let Some(module) = ast::Module::cast(ancestor.clone()) else {
+        let syntax_node = ancestor.clone();
+        let Some(module) = ast::Module::cast(syntax_node) else {
             return false;
         };
         let is_test_module = module.name().is_some_and(|name| name.text() == "tests");
@@ -524,7 +555,8 @@ fn check_no_expect_outside_tests(source: &str, ast: &SourceFile, path: &str) -> 
             if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
                 return None;
             }
-            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let method_call = ast::MethodCallExpr::cast(syntax_node)?;
             let method_name = method_call.name_ref()?.text().to_string();
             if method_name != "expect" {
                 return None;
@@ -532,7 +564,9 @@ fn check_no_expect_outside_tests(source: &str, ast: &SourceFile, path: &str) -> 
             if is_inside_test_module(&node) {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: .expect()"))
         })
         .collect()
@@ -545,7 +579,8 @@ fn check_no_if_let_ok_without_else(source: &str, ast: &SourceFile, _path: &str) 
             if node.kind() != SyntaxKind::IF_EXPR {
                 return None;
             }
-            let if_expr = ast::IfExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let if_expr = ast::IfExpr::cast(syntax_node)?;
             let condition = if_expr.condition()?;
             let ast::Expr::LetExpr(let_expr) = condition else {
                 return None;
@@ -558,7 +593,9 @@ fn check_no_if_let_ok_without_else(source: &str, ast: &SourceFile, _path: &str) 
             if if_expr.else_branch().is_some() {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: if let Ok(...) without else"))
         })
         .collect()
@@ -571,7 +608,8 @@ fn check_no_let_ok_else_continue(source: &str, ast: &SourceFile, _path: &str) ->
             if node.kind() != SyntaxKind::LET_STMT {
                 return None;
             }
-            let let_stmt = ast::LetStmt::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let let_stmt = ast::LetStmt::cast(syntax_node)?;
             let pat = let_stmt.pat()?;
             let pat_str = pat.to_string();
             if !pat_str.starts_with("Ok(") {
@@ -583,7 +621,9 @@ fn check_no_let_ok_else_continue(source: &str, ast: &SourceFile, _path: &str) ->
             if !block_str.contains("continue") {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: let Ok(...) else {{ continue }}"))
         })
         .collect()
@@ -601,7 +641,10 @@ fn check_no_ignore_test(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
             if path.to_string() != "ignore" {
                 return None;
             }
-            let line = line_number(source, attr.syntax().text_range().start().into());
+            let syntax = attr.syntax();
+            let start = syntax.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: #[ignore]"))
         })
         .collect()
@@ -618,7 +661,10 @@ fn check_no_impl(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
             if impl_node.trait_().is_some() {
                 return None;
             }
-            let line = line_number(source, impl_node.syntax().text_range().start().into());
+            let syntax = impl_node.syntax();
+            let start = syntax.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             let self_ty = match impl_node.self_ty() {
                 Some(ty) => ty.to_string(),
                 None => "block".to_string(),
@@ -635,12 +681,15 @@ fn check_no_is_ok_is_err(source: &str, ast: &SourceFile, _path: &str) -> Vec<Str
             if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
                 return None;
             }
-            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let method_call = ast::MethodCallExpr::cast(syntax_node)?;
             let method_name = method_call.name_ref()?.text().to_string();
             if method_name != "is_ok" && method_name != "is_err" {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: .{method_name}()"))
         })
         .collect()
@@ -653,7 +702,8 @@ fn check_no_map_discard(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
             if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
                 return None;
             }
-            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let method_call = ast::MethodCallExpr::cast(syntax_node)?;
             let method_name = method_call.name_ref()?.text().to_string();
             if method_name != "map" {
                 return None;
@@ -664,7 +714,9 @@ fn check_no_map_discard(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
             if !arg_str.contains("|_|") {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: .map(|_| ...)"))
         })
         .collect()
@@ -690,7 +742,8 @@ fn check_no_map_err_discard(source: &str, ast: &SourceFile, _path: &str) -> Vec<
             if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
                 return None;
             }
-            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let method_call = ast::MethodCallExpr::cast(syntax_node)?;
             let method_name = method_call.name_ref()?.text().to_string();
             if method_name != "map_err" {
                 return None;
@@ -701,7 +754,9 @@ fn check_no_map_err_discard(source: &str, ast: &SourceFile, _path: &str) -> Vec<
             if !has_discarded_closure_param(&arg_str) {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: .map_err(|_| ...)"))
         })
         .collect()
@@ -718,13 +773,16 @@ fn check_no_mem_forget(source: &str, ast: &SourceFile, _path: &str) -> Vec<Strin
             if node.kind() != SyntaxKind::CALL_EXPR {
                 return None;
             }
-            let call = ast::CallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let call = ast::CallExpr::cast(syntax_node)?;
             let expr = call.expr()?;
             let text = expr.to_string();
             if text != "mem::forget" && text != "std::mem::forget" && text != "forget" {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: mem::forget()"))
         })
         .collect()
@@ -737,7 +795,8 @@ fn check_no_ok_and_propagate(source: &str, ast: &SourceFile, _path: &str) -> Vec
             if node.kind() != SyntaxKind::TRY_EXPR {
                 return None;
             }
-            let try_expr = ast::TryExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let try_expr = ast::TryExpr::cast(syntax_node)?;
             let inner = try_expr.expr()?;
             let ast::Expr::MethodCallExpr(method_call) = inner else {
                 return None;
@@ -746,7 +805,9 @@ fn check_no_ok_and_propagate(source: &str, ast: &SourceFile, _path: &str) -> Vec
             if method_name != "ok" {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: .ok()?"))
         })
         .collect()
@@ -759,12 +820,15 @@ fn check_no_ok_method(source: &str, ast: &SourceFile, _path: &str) -> Vec<String
             if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
                 return None;
             }
-            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let method_call = ast::MethodCallExpr::cast(syntax_node)?;
             let method_name = method_call.name_ref()?.text().to_string();
             if method_name != "ok" {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: .ok()"))
         })
         .collect()
@@ -779,7 +843,10 @@ fn check_no_trait_impl(source: &str, ast: &SourceFile, _path: &str) -> Vec<Strin
             }
             let impl_node = ast::Impl::cast(node)?;
             let trait_ref = impl_node.trait_()?;
-            let line = line_number(source, impl_node.syntax().text_range().start().into());
+            let syntax = impl_node.syntax();
+            let start = syntax.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             let self_ty = match impl_node.self_ty() {
                 Some(ty) => ty.to_string(),
                 None => "block".to_string(),
@@ -822,7 +889,8 @@ fn extract_error_attr_format(variant: &ast::Variant) -> Option<String> {
             return None;
         }
         let token_tree = attr.token_tree()?;
-        Some(token_tree.to_string())
+        let token_text = token_tree.to_string();
+        Some(token_text)
     })
 }
 
@@ -891,7 +959,10 @@ fn check_thiserror_unused_fields(source: &str, ast: &SourceFile, _path: &str) ->
             let placeholders = extract_format_placeholders(&format_str);
             for field_name in &field_names {
                 if !placeholders.contains(field_name) {
-                    let line = line_number(source, variant.syntax().text_range().start().into());
+                    let syntax = variant.syntax();
+                    let start = syntax.text_range().start();
+                    let offset: usize = start.into();
+                    let line = line_number(source, offset);
                     let variant_name = match variant.name() {
                         Some(name) => name.text().to_string(),
                         None => "?".to_string(),
@@ -934,12 +1005,15 @@ fn check_method_call(source: &str, ast: &SourceFile, method: &str) -> Vec<String
             if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
                 return None;
             }
-            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let method_call = ast::MethodCallExpr::cast(syntax_node)?;
             let method_name = method_call.name_ref()?.text().to_string();
             if method_name != method {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: .{method_name}()"))
         })
         .collect()
@@ -959,7 +1033,9 @@ fn check_no_unit_error(source: &str, ast: &SourceFile, _path: &str) -> Vec<Strin
             if !type_str.contains(", ()>") && !type_str.ends_with(", ()>") {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: Result<_, ()>"))
         })
         .collect()
@@ -972,7 +1048,8 @@ fn check_no_while_let_ok(source: &str, ast: &SourceFile, _path: &str) -> Vec<Str
             if node.kind() != SyntaxKind::WHILE_EXPR {
                 return None;
             }
-            let while_expr = ast::WhileExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let while_expr = ast::WhileExpr::cast(syntax_node)?;
             let condition = while_expr.condition()?;
             let ast::Expr::LetExpr(let_expr) = condition else {
                 return None;
@@ -982,7 +1059,9 @@ fn check_no_while_let_ok(source: &str, ast: &SourceFile, _path: &str) -> Vec<Str
             if !pat_str.starts_with("Ok(") {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: while let Ok(...)"))
         })
         .collect()
@@ -996,7 +1075,8 @@ fn extract_err_binding(pat: &ast::Pat) -> Option<String> {
         return None;
     }
     let field = tuple_pat.fields().next()?;
-    Some(field.to_string())
+    let field_name = field.to_string();
+    Some(field_name)
 }
 
 fn has_expect(expr_str: &str) -> bool {
@@ -1014,16 +1094,18 @@ fn check_no_inline_style(source: &str, ast: &SourceFile, _path: &str) -> Vec<Str
                 .descendants_with_tokens()
                 .filter_map(ra_ap_syntax::NodeOrToken::into_token)
                 .collect();
-            let found: Vec<_> = tokens
-                .iter()
-                .zip(tokens.iter().skip(1))
+            let trailing_tokens = tokens.iter().skip(1);
+            let token_pairs = tokens.iter().zip(trailing_tokens);
+            let found: Vec<_> = token_pairs
                 .filter(|(ident, eq)| {
                     ident.kind() == SyntaxKind::IDENT
                         && ident.text() == "style"
                         && eq.kind() == SyntaxKind::EQ
                 })
                 .map(|(ident, _)| {
-                    let line = line_number(source, ident.text_range().start().into());
+                    let start = ident.text_range().start();
+                    let offset: usize = start.into();
+                    let line = line_number(source, offset);
                     format!("line {line}: style=")
                 })
                 .collect();
@@ -1040,7 +1122,8 @@ fn check_no_swallowed_err(source: &str, ast: &SourceFile, _path: &str) -> Vec<St
             if node.kind() != SyntaxKind::MATCH_ARM {
                 return None;
             }
-            let arm = ast::MatchArm::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let arm = ast::MatchArm::cast(syntax_node)?;
             let pat = arm.pat()?;
             let binding = extract_err_binding(&pat)?;
             let expr = arm.expr()?;
@@ -1053,7 +1136,9 @@ fn check_no_swallowed_err(source: &str, ast: &SourceFile, _path: &str) -> Vec<St
             if !is_discarded && !is_unused {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: Err({binding}) not used"))
         })
         .collect()
@@ -1080,15 +1165,19 @@ fn check_no_print_outside_main(source: &str, ast: &SourceFile, _path: &str) -> V
             if node.kind() != SyntaxKind::MACRO_CALL {
                 return None;
             }
-            let macro_call = ast::MacroCall::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let macro_call = ast::MacroCall::cast(syntax_node)?;
             let macro_name = macro_call.path()?.segment()?.name_ref()?.text().to_string();
-            if !PRINT_MACROS.contains(&macro_name.as_str()) {
+            let macro_name_ref = macro_name.as_str();
+            if !PRINT_MACROS.contains(&macro_name_ref) {
                 return None;
             }
             if is_inside_main(&node) {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: {macro_name}!"))
         })
         .collect()
@@ -1101,13 +1190,16 @@ fn check_no_return_ok(source: &str, ast: &SourceFile, _path: &str) -> Vec<String
             if node.kind() != SyntaxKind::RETURN_EXPR {
                 return None;
             }
-            let return_expr = ast::ReturnExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let return_expr = ast::ReturnExpr::cast(syntax_node)?;
             let expr = return_expr.expr()?;
             let expr_str = expr.to_string();
             if expr_str != "Ok(())" {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: return Ok(())"))
         })
         .collect()
@@ -1124,7 +1216,8 @@ fn check_no_stderr_null(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
             if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
                 return None;
             }
-            let method_call = ast::MethodCallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let method_call = ast::MethodCallExpr::cast(syntax_node)?;
             let method_name = method_call.name_ref()?.text().to_string();
             if method_name != "stderr" {
                 return None;
@@ -1135,7 +1228,9 @@ fn check_no_stderr_null(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
             if !arg_str.contains("null()") {
                 return None;
             }
-            let line = line_number(source, node.text_range().start().into());
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
             Some(format!("line {line}: .stderr(Stdio::null())"))
         })
         .collect()
@@ -1260,7 +1355,8 @@ pub fn check() -> CheckResult {
     errors.extend(cargo_toml_errors);
 
     let mut violations = run_rules(&parsed, RULES);
-    violations.extend(run_cargo_toml_rules(&parsed_cargo_tomls, CARGO_TOML_RULES));
+    let cargo_violations = run_cargo_toml_rules(&parsed_cargo_tomls, CARGO_TOML_RULES);
+    violations.extend(cargo_violations);
     CheckResult {
         errors,
         file_count: parsed.len() + parsed_cargo_tomls.len(),

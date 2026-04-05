@@ -336,12 +336,14 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
             self.stdout_write_errors.push(format!("line {line}"));
         }
 
-        let fn_name = match &expr.callee {
-            Expression::Identifier(id) if THROWING_FNS.contains(&id.name.as_str()) => {
-                Some(id.name.as_str())
-            }
-            _ if THROWING_FNS.contains(&callee_text.as_str()) => Some(callee_text.as_str()),
-            _ => None,
+        let callee_name = callee_text.as_str();
+        let fn_name = if let Expression::Identifier(id) = &expr.callee {
+            let id_name = id.name.as_str();
+            let is_throwing = THROWING_FNS.contains(&id_name);
+            is_throwing.then_some(id_name)
+        } else {
+            let is_throwing = THROWING_FNS.contains(&callee_name);
+            is_throwing.then_some(callee_name)
         };
         if let Some(name) = fn_name
             && self.inside_try == 0
@@ -519,10 +521,11 @@ fn check_ts_files(paths: Vec<String>) -> (usize, Vec<Violation>, Vec<AppError>) 
             Ok(source) => {
                 let eslint_errors = check_no_eslint_disable(&source);
                 if !eslint_errors.is_empty() {
+                    let hint = "fix the violation instead of disabling the rule".to_string();
                     all_violations.push(Violation {
                         errors: eslint_errors,
                         file: path.clone(),
-                        hint: Some("fix the violation instead of disabling the rule".to_string()),
+                        hint: Some(hint),
                         rule: "no-eslint-disable".to_string(),
                     });
                 }
@@ -550,7 +553,8 @@ fn check_ts_files(paths: Vec<String>) -> (usize, Vec<Violation>, Vec<AppError>) 
 
                 let mut visitor = create_visitor(&source, &path);
                 visitor.visit_program(&result.program);
-                all_violations.extend(collect_violations(visitor));
+                let violations = collect_violations(visitor);
+                all_violations.extend(violations);
             }
             Err(err) => errors.push(AppError::Read {
                 file: path,
@@ -599,7 +603,8 @@ mod tests {
     fn parse_ts_fixture_as(name: &str, path: &str) -> Vec<Violation> {
         let source = read_fixture(&format!("{name}.ts"));
         let allocator = Allocator::default();
-        let parser = Parser::new(&allocator, &source, SourceType::ts());
+        let source_type = SourceType::ts();
+        let parser = Parser::new(&allocator, &source, source_type);
         let result = parser.parse();
         let mut visitor = create_visitor(&source, path);
         visitor.visit_program(&result.program);

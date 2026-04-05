@@ -85,7 +85,8 @@ struct ParsedJust {
 
 fn create_parser() -> Result<Parser, tree_sitter::LanguageError> {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_just::language())?;
+    let language = tree_sitter_just::language();
+    parser.set_language(&language)?;
     Ok(parser)
 }
 
@@ -93,7 +94,8 @@ fn find_recipes<'tree>(node: Node<'tree>, recipes: &mut Vec<Node<'tree>>) {
     if node.kind() == "recipe" {
         recipes.push(node);
     }
-    for child in node.children(&mut node.walk()) {
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
         find_recipes(child, recipes);
     }
 }
@@ -102,11 +104,15 @@ fn recipe_name<'tree>(
     recipe: Node<'tree>,
     source: &'tree [u8],
 ) -> Result<Option<&'tree str>, std::str::Utf8Error> {
-    for child in recipe.children(&mut recipe.walk()) {
+    let mut recipe_walker = recipe.walk();
+    for child in recipe.children(&mut recipe_walker) {
         if child.kind() == "recipe_header" {
-            for header_child in child.children(&mut child.walk()) {
+            let mut header_walker = child.walk();
+            for header_child in child.children(&mut header_walker) {
                 if header_child.kind() == "identifier" {
-                    return Ok(Some(header_child.utf8_text(source)?));
+                    let name = header_child.utf8_text(source)?;
+                    let recipe_name = Some(name);
+                    return Ok(recipe_name);
                 }
             }
         }
@@ -115,9 +121,11 @@ fn recipe_name<'tree>(
 }
 
 fn has_dependencies(recipe: Node<'_>) -> bool {
-    for child in recipe.children(&mut recipe.walk()) {
+    let mut recipe_walker = recipe.walk();
+    for child in recipe.children(&mut recipe_walker) {
         if child.kind() == "recipe_header" {
-            for header_child in child.children(&mut child.walk()) {
+            let mut header_walker = child.walk();
+            for header_child in child.children(&mut header_walker) {
                 if header_child.kind() == "dependencies" {
                     return true;
                 }
@@ -131,15 +139,19 @@ fn shebang_language<'tree>(
     recipe: Node<'tree>,
     source: &'tree [u8],
 ) -> Result<Option<(usize, &'tree str)>, std::str::Utf8Error> {
-    for child in recipe.children(&mut recipe.walk()) {
+    let mut recipe_walker = recipe.walk();
+    for child in recipe.children(&mut recipe_walker) {
         if child.kind() == "recipe_body" {
-            for body_child in child.children(&mut child.walk()) {
+            let mut body_walker = child.walk();
+            for body_child in child.children(&mut body_walker) {
                 if body_child.kind() == "shebang" {
-                    for shebang_child in body_child.children(&mut body_child.walk()) {
+                    let mut shebang_walker = body_child.walk();
+                    for shebang_child in body_child.children(&mut shebang_walker) {
                         if shebang_child.kind() == "language" {
                             let line = body_child.start_position().row + 1;
                             let lang = shebang_child.utf8_text(source)?;
-                            return Ok(Some((line, lang)));
+                            let shebang = Some((line, lang));
+                            return Ok(shebang);
                         }
                     }
                 }
@@ -155,16 +167,19 @@ fn is_nu_recipe(recipe: Node<'_>, source: &[u8]) -> bool {
 
 fn recipe_body_lines<'tree>(recipe: Node<'tree>, source: &'tree [u8]) -> Vec<(usize, &'tree str)> {
     let mut lines = Vec::new();
-    for child in recipe.children(&mut recipe.walk()) {
+    let mut recipe_walker = recipe.walk();
+    for child in recipe.children(&mut recipe_walker) {
         if child.kind() != "recipe_body" {
             continue;
         }
-        for body_child in child.children(&mut child.walk()) {
+        let mut body_walker = child.walk();
+        for body_child in child.children(&mut body_walker) {
             if body_child.kind() != "recipe_line" {
                 continue;
             }
             let line_num = body_child.start_position().row + 1;
-            for line_child in body_child.children(&mut body_child.walk()) {
+            let mut line_walker = body_child.walk();
+            for line_child in body_child.children(&mut line_walker) {
                 if line_child.kind() == "text"
                     && let Ok(text) = line_child.utf8_text(source)
                 {
@@ -188,7 +203,8 @@ fn first_token(line: &str) -> Option<&str> {
 fn check_no_bunx(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
     let mut recipes = Vec::new();
-    find_recipes(tree.root_node(), &mut recipes);
+    let root = tree.root_node();
+    find_recipes(root, &mut recipes);
 
     let mut errors = Vec::new();
     for recipe in &recipes {
@@ -222,7 +238,8 @@ fn check_no_bunx(source: &str, tree: &Tree) -> Vec<String> {
 fn check_no_external_without_caret(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
     let mut recipes = Vec::new();
-    find_recipes(tree.root_node(), &mut recipes);
+    let root = tree.root_node();
+    find_recipes(root, &mut recipes);
 
     let mut errors = Vec::new();
     for recipe in &recipes {
@@ -259,7 +276,8 @@ fn check_no_external_without_caret(source: &str, tree: &Tree) -> Vec<String> {
 fn check_no_bash_shebang(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
     let mut recipes = Vec::new();
-    find_recipes(tree.root_node(), &mut recipes);
+    let root = tree.root_node();
+    find_recipes(root, &mut recipes);
 
     let mut errors = Vec::new();
     for recipe in recipes {
@@ -308,22 +326,26 @@ fn check_no_long_lines(source: &str, _tree: &Tree) -> Vec<String> {
 
 fn recipe_param_names<'tree>(recipe: Node<'tree>, source: &'tree [u8]) -> Vec<(usize, String)> {
     let mut params = Vec::new();
-    for child in recipe.children(&mut recipe.walk()) {
+    let mut recipe_walker = recipe.walk();
+    for child in recipe.children(&mut recipe_walker) {
         if child.kind() != "recipe_header" {
             continue;
         }
-        for header_child in child.children(&mut child.walk()) {
+        let mut header_walker = child.walk();
+        for header_child in child.children(&mut header_walker) {
             if header_child.kind() != "parameters" {
                 continue;
             }
-            for param_node in header_child.children(&mut header_child.walk()) {
+            let mut parameters_walker = header_child.walk();
+            for param_node in header_child.children(&mut parameters_walker) {
                 let target = match param_node.kind() {
                     "parameter" => param_node,
                     "variadic_parameter" => {
-                        match param_node
-                            .children(&mut param_node.walk())
-                            .find(|variadic_child| variadic_child.kind() == "parameter")
-                        {
+                        let mut variadic_walker = param_node.walk();
+                        let inner_param = param_node
+                            .children(&mut variadic_walker)
+                            .find(|variadic_child| variadic_child.kind() == "parameter");
+                        match inner_param {
                             Some(inner) => inner,
                             None => continue,
                         }
@@ -345,7 +367,8 @@ fn recipe_param_names<'tree>(recipe: Node<'tree>, source: &'tree [u8]) -> Vec<(u
 fn check_no_lowercase_args(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
     let mut recipes = Vec::new();
-    find_recipes(tree.root_node(), &mut recipes);
+    let root = tree.root_node();
+    find_recipes(root, &mut recipes);
 
     let mut errors = Vec::new();
     for recipe in &recipes {
@@ -376,7 +399,8 @@ fn check_no_lowercase_args(source: &str, tree: &Tree) -> Vec<String> {
 fn check_no_recipe_deps(source: &str, tree: &Tree) -> Vec<String> {
     let source_bytes = source.as_bytes();
     let mut recipes = Vec::new();
-    find_recipes(tree.root_node(), &mut recipes);
+    let root = tree.root_node();
+    find_recipes(root, &mut recipes);
 
     let mut errors = Vec::new();
     for recipe in recipes {

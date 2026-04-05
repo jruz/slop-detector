@@ -186,7 +186,8 @@ fn check_files(paths: Vec<String>) -> (Vec<Violation>, Vec<AppError>, usize) {
             Ok(source) => {
                 file_count += 1;
                 let allocator = Allocator::default();
-                let parser = Parser::new(&allocator, &source, SourceType::ts());
+                let source_type = SourceType::ts();
+                let parser = Parser::new(&allocator, &source, source_type);
                 let result = parser.parse();
 
                 if result.panicked {
@@ -199,7 +200,8 @@ fn check_files(paths: Vec<String>) -> (Vec<Violation>, Vec<AppError>, usize) {
 
                 let mut visitor = create_visitor(&source, &path);
                 visitor.visit_program(&result.program);
-                all_violations.extend(collect_violations(&visitor));
+                let violations = collect_violations(&visitor);
+                all_violations.extend(violations);
             }
             Err(err) => errors.push(AppError::Read {
                 file: path,
@@ -235,7 +237,8 @@ mod tests {
     fn parse_fixture_as(name: &str, virtual_path: &str) -> Vec<Violation> {
         let source = read_fixture(&format!("{name}.spec.ts"));
         let allocator = Allocator::default();
-        let parser = Parser::new(&allocator, &source, SourceType::ts());
+        let source_type = SourceType::ts();
+        let parser = Parser::new(&allocator, &source, source_type);
         let result = parser.parse();
         let mut visitor = create_visitor(&source, virtual_path);
         visitor.visit_program(&result.program);

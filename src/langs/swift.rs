@@ -50,7 +50,8 @@ struct ParsedSwift {
 
 fn create_parser() -> Result<Parser, tree_sitter::LanguageError> {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_swift::LANGUAGE.into())?;
+    let language = tree_sitter_swift::LANGUAGE.into();
+    parser.set_language(&language)?;
     Ok(parser)
 }
 
@@ -58,15 +59,18 @@ fn find_nodes_by_kind<'tree>(node: Node<'tree>, kind: &str, results: &mut Vec<No
     if node.kind() == kind {
         results.push(node);
     }
-    for child in node.children(&mut node.walk()) {
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
         find_nodes_by_kind(child, kind, results);
     }
 }
 
 fn has_question_mark(node: Node<'_>) -> bool {
-    for child in node.children(&mut node.walk()) {
+    let mut node_walker = node.walk();
+    for child in node.children(&mut node_walker) {
         if child.kind() == "try_operator" {
-            for inner in child.children(&mut child.walk()) {
+            let mut child_walker = child.walk();
+            for inner in child.children(&mut child_walker) {
                 if inner.kind() == "?" {
                     return true;
                 }
@@ -86,7 +90,8 @@ fn node_first_line<'src>(
         return Ok("try?");
     };
     let text = std::str::from_utf8(slice)?;
-    Ok(text.lines().next().map_or("try?", |line| line))
+    let first_line = text.lines().next().map_or("try?", |line| line);
+    Ok(first_line)
 }
 
 fn is_silent_return(statements: Node<'_>) -> bool {
@@ -99,8 +104,9 @@ fn is_silent_return(statements: Node<'_>) -> bool {
         return false;
     }
 
+    let mut first_walker = first.walk();
     let kinds: Vec<&str> = first
-        .children(&mut first.walk())
+        .children(&mut first_walker)
         .map(|child| child.kind())
         .collect();
 
@@ -109,7 +115,8 @@ fn is_silent_return(statements: Node<'_>) -> bool {
 
 fn find_else_body(node: Node<'_>) -> Option<Node<'_>> {
     let mut found_else = false;
-    for child in node.children(&mut node.walk()) {
+    let mut walker = node.walk();
+    for child in node.children(&mut walker) {
         if child.kind() == "else" {
             found_else = true;
             continue;
@@ -123,7 +130,8 @@ fn find_else_body(node: Node<'_>) -> Option<Node<'_>> {
 
 fn check_no_guard_return(source: &str, tree: &Tree) -> Vec<String> {
     let mut guards = Vec::new();
-    find_nodes_by_kind(tree.root_node(), "guard_statement", &mut guards);
+    let root = tree.root_node();
+    find_nodes_by_kind(root, "guard_statement", &mut guards);
 
     let mut errors = Vec::new();
     for node in &guards {
@@ -144,12 +152,14 @@ fn check_no_guard_return(source: &str, tree: &Tree) -> Vec<String> {
 
 fn check_no_silent_catch(source: &str, tree: &Tree) -> Vec<String> {
     let mut catches = Vec::new();
-    find_nodes_by_kind(tree.root_node(), "catch_block", &mut catches);
+    let root = tree.root_node();
+    find_nodes_by_kind(root, "catch_block", &mut catches);
 
     let mut errors = Vec::new();
     for node in &catches {
+        let mut walker = node.walk();
         let statements = node
-            .children(&mut node.walk())
+            .children(&mut walker)
             .find(|child| child.kind() == "statements");
         let is_silent = match statements {
             None => true,
@@ -169,12 +179,14 @@ fn check_no_silent_catch(source: &str, tree: &Tree) -> Vec<String> {
 
 fn check_no_silent_if_let(source: &str, tree: &Tree) -> Vec<String> {
     let mut if_stmts = Vec::new();
-    find_nodes_by_kind(tree.root_node(), "if_statement", &mut if_stmts);
+    let root = tree.root_node();
+    find_nodes_by_kind(root, "if_statement", &mut if_stmts);
 
     let mut errors = Vec::new();
     for node in &if_stmts {
+        let mut walker = node.walk();
         let is_if_let = node
-            .children(&mut node.walk())
+            .children(&mut walker)
             .any(|child| child.kind() == "value_binding_pattern");
         if !is_if_let {
             continue;
@@ -196,7 +208,8 @@ fn check_no_silent_if_let(source: &str, tree: &Tree) -> Vec<String> {
 
 fn check_no_try_question_mark(source: &str, tree: &Tree) -> Vec<String> {
     let mut try_expressions = Vec::new();
-    find_nodes_by_kind(tree.root_node(), "try_expression", &mut try_expressions);
+    let root = tree.root_node();
+    find_nodes_by_kind(root, "try_expression", &mut try_expressions);
 
     let mut errors = Vec::new();
     for node in &try_expressions {
@@ -214,28 +227,32 @@ fn check_no_try_question_mark(source: &str, tree: &Tree) -> Vec<String> {
 
 fn check_no_nested_call_args(_source: &str, tree: &Tree) -> Vec<String> {
     let mut calls = Vec::new();
-    find_nodes_by_kind(tree.root_node(), "call_expression", &mut calls);
+    let root = tree.root_node();
+    find_nodes_by_kind(root, "call_expression", &mut calls);
 
     let mut errors = Vec::new();
     for node in &calls {
-        let has_nested = node
-            .children(&mut node.walk())
-            .find(|child| child.kind() == "call_suffix")
-            .is_some_and(|suffix| {
-                suffix
-                    .children(&mut suffix.walk())
-                    .find(|child| child.kind() == "value_arguments")
-                    .is_some_and(|arguments| {
-                        arguments
-                            .children(&mut arguments.walk())
-                            .filter(|child| child.kind() == "value_argument")
-                            .any(|argument| {
-                                argument
-                                    .child_by_field_name("value")
-                                    .is_some_and(|value| value.kind() == "call_expression")
-                            })
+        let mut node_walker = node.walk();
+        let call_suffix = node
+            .children(&mut node_walker)
+            .find(|child| child.kind() == "call_suffix");
+        let has_nested = call_suffix.is_some_and(|suffix| {
+            let mut suffix_walker = suffix.walk();
+            let value_arguments = suffix
+                .children(&mut suffix_walker)
+                .find(|child| child.kind() == "value_arguments");
+            value_arguments.is_some_and(|arguments| {
+                let mut arguments_walker = arguments.walk();
+                arguments
+                    .children(&mut arguments_walker)
+                    .filter(|child| child.kind() == "value_argument")
+                    .any(|argument| {
+                        argument
+                            .child_by_field_name("value")
+                            .is_some_and(|value| value.kind() == "call_expression")
                     })
-            });
+            })
+        });
 
         if has_nested {
             let line = node.start_position().row + 1;

@@ -77,11 +77,14 @@ fn check_banned_resources(body: &Body, path: &str) -> Vec<Violation> {
             BANNED_RESOURCES
                 .iter()
                 .find(|banned| resource_type == banned.type_name)
-                .map(|banned| Violation {
-                    errors: vec![format!("resource \"{resource_type}\" \"{resource_name}\"")],
-                    file: path.to_string(),
-                    hint: Some(banned.hint.to_string()),
-                    rule: "banned-resource".to_string(),
+                .map(|banned| {
+                    let hint = banned.hint.to_string();
+                    Violation {
+                        errors: vec![format!("resource \"{resource_type}\" \"{resource_name}\"")],
+                        file: path.to_string(),
+                        hint: Some(hint),
+                        rule: "banned-resource".to_string(),
+                    }
                 })
         })
         .collect()
@@ -101,11 +104,14 @@ fn check_banned_data_sources(body: &Body, path: &str) -> Vec<Violation> {
             BANNED_DATA_SOURCES
                 .iter()
                 .find(|banned| data_type == banned.type_name)
-                .map(|banned| Violation {
-                    errors: vec![format!("data \"{data_type}\" \"{data_name}\"")],
-                    file: path.to_string(),
-                    hint: Some(banned.hint.to_string()),
-                    rule: "banned-data-source".to_string(),
+                .map(|banned| {
+                    let hint = banned.hint.to_string();
+                    Violation {
+                        errors: vec![format!("data \"{data_type}\" \"{data_name}\"")],
+                        file: path.to_string(),
+                        hint: Some(hint),
+                        rule: "banned-data-source".to_string(),
+                    }
                 })
         })
         .collect()
@@ -130,13 +136,16 @@ fn check_banned_provisioners(body: &Body, path: &str) -> Vec<Violation> {
                     BANNED_PROVISIONERS
                         .iter()
                         .find(|banned| prov_type == banned.type_name)
-                        .map(|banned| Violation {
-                            errors: vec![format!(
-                                "resource \"{resource_type}\" \"{resource_name}\" provisioner \"{prov_type}\""
-                            )],
-                            file: path.to_string(),
-                            hint: Some(banned.hint.to_string()),
-                            rule: "banned-provisioner".to_string(),
+                        .map(|banned| {
+                            let hint = banned.hint.to_string();
+                            Violation {
+                                errors: vec![format!(
+                                    "resource \"{resource_type}\" \"{resource_name}\" provisioner \"{prov_type}\""
+                                )],
+                                file: path.to_string(),
+                                hint: Some(hint),
+                                rule: "banned-provisioner".to_string(),
+                            }
                         })
                 })
                 .collect::<Vec<_>>()
@@ -159,11 +168,14 @@ fn check_banned_providers(body: &Body, path: &str) -> Vec<Violation> {
                         BANNED_PROVIDERS
                             .iter()
                             .find(|banned| provider_name == banned.type_name)
-                            .map(|banned| Violation {
-                                errors: vec![format!("provider \"{provider_name}\"")],
-                                file: path.to_string(),
-                                hint: Some(banned.hint.to_string()),
-                                rule: "banned-provider".to_string(),
+                            .map(|banned| {
+                                let hint = banned.hint.to_string();
+                                Violation {
+                                    errors: vec![format!("provider \"{provider_name}\"")],
+                                    file: path.to_string(),
+                                    hint: Some(hint),
+                                    rule: "banned-provider".to_string(),
+                                }
                             })
                     })
                 })

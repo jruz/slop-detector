@@ -10,7 +10,8 @@ const CONFIG_FILE: &str = "slop-detector.toml";
 pub fn load_config() -> Result<Config> {
     let path = Path::new(CONFIG_FILE);
     if !path.exists() {
-        return Ok(Config::default());
+        let default_config = Config::default();
+        return Ok(default_config);
     }
 
     let content = fs::read_to_string(path)?;
@@ -35,8 +36,9 @@ fn should_ignore_rule(file: &str, rule: &str, config: &Config) -> bool {
         return false;
     };
 
+    let rule_name = rule.to_string();
     if let Some(rules) = &ignore.rules
-        && rules.contains(&rule.to_string())
+        && rules.contains(&rule_name)
     {
         return true;
     }

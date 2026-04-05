@@ -43,7 +43,8 @@ pub fn find_files(patterns: &[&str], excludes: &[&str]) -> Result<Vec<String>> {
         });
 
         if matches_pattern {
-            files.push(path_str.into_owned());
+            let path_owned = path_str.into_owned();
+            files.push(path_owned);
         }
     }
 

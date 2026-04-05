@@ -40,18 +40,19 @@ fn merge_by_rule(
         sorted_rules.sort();
         for rule in sorted_rules {
             if let Some(files) = by_rule.get(rule) {
-                merged
-                    .entry(rule.clone())
-                    .or_default()
-                    .extend(files.clone());
+                let rule_name = rule.clone();
+                let files_to_merge = files.clone();
+                merged.entry(rule_name).or_default().extend(files_to_merge);
             }
         }
     }
 
     for (rule, files) in new_violations {
-        let entry = merged.entry(rule.to_string()).or_default();
+        let rule_name = rule.to_string();
+        let entry = merged.entry(rule_name).or_default();
         for file in files {
-            entry.insert(file.to_string());
+            let file_name = file.to_string();
+            entry.insert(file_name);
         }
     }
 
@@ -67,7 +68,8 @@ fn merge_files(existing: &Config) -> Vec<String> {
     if let Some(ignore) = &existing.ignore
         && let Some(existing_files) = &ignore.files
     {
-        files.extend(existing_files.clone());
+        let existing_files = existing_files.clone();
+        files.extend(existing_files);
     }
 
     files.sort();
@@ -81,7 +83,8 @@ fn merge_rules(existing: &Config) -> Vec<String> {
     if let Some(ignore) = &existing.ignore
         && let Some(existing_rules) = &ignore.rules
     {
-        rules.extend(existing_rules.clone());
+        let existing_rules = existing_rules.clone();
+        rules.extend(existing_rules);
     }
 
     rules.sort();
@@ -98,7 +101,8 @@ fn format_string_array(items: &[String]) -> String {
     for item in items {
         lines.push(format!("    \"{item}\","));
     }
-    lines.push("]".to_string());
+    let closing_bracket = "]".to_string();
+    lines.push(closing_bracket);
     lines.join("\n")
 }
 
@@ -128,6 +132,7 @@ pub fn generate_config_toml(violations: &[Violation], existing: &Config) -> Stri
         lines.push(format!("{rule} = {}", format_string_array(rule_files)));
     }
 
-    lines.push(String::new());
+    let blank_line = String::new();
+    lines.push(blank_line);
     lines.join("\n")
 }

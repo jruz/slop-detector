@@ -64,28 +64,31 @@ pub fn check() -> CheckResult {
 
     for path in paths {
         match fs::read_to_string(&path) {
-            Ok(source) => match StyleSheet::parse(&source, ParserOptions::default()) {
-                Ok(stylesheet) => {
-                    file_count += 1;
-                    for rule in RULES {
-                        let rule_errors = (rule.check)(&source, &stylesheet);
-                        if !rule_errors.is_empty() {
-                            violations.push(Violation {
-                                errors: rule_errors,
-                                file: path.clone(),
-                                hint: rule.hint.map(String::from),
-                                rule: rule.name.to_string(),
-                            });
+            Ok(source) => {
+                let parser_options = ParserOptions::default();
+                match StyleSheet::parse(&source, parser_options) {
+                    Ok(stylesheet) => {
+                        file_count += 1;
+                        for rule in RULES {
+                            let rule_errors = (rule.check)(&source, &stylesheet);
+                            if !rule_errors.is_empty() {
+                                violations.push(Violation {
+                                    errors: rule_errors,
+                                    file: path.clone(),
+                                    hint: rule.hint.map(String::from),
+                                    rule: rule.name.to_string(),
+                                });
+                            }
                         }
                     }
+                    Err(err) => {
+                        errors.push(AppError::Parse {
+                            file: path,
+                            message: err.to_string(),
+                        });
+                    }
                 }
-                Err(err) => {
-                    errors.push(AppError::Parse {
-                        file: path,
-                        message: err.to_string(),
-                    });
-                }
-            },
+            }
             Err(err) => errors.push(AppError::Read {
                 file: path,
                 message: err.to_string(),
@@ -107,9 +110,10 @@ mod tests {
     fn parse_fixture(name: &str) -> (String, StyleSheet<'static, 'static>) {
         let path = format!("fixtures/css/{name}.css");
         let source = fs::read_to_string(&path).expect("fixture should exist");
-        let source_leaked: &'static str = Box::leak(source.into_boxed_str());
-        let stylesheet =
-            StyleSheet::parse(source_leaked, ParserOptions::default()).expect("valid css");
+        let source_box = source.into_boxed_str();
+        let source_leaked: &'static str = Box::leak(source_box);
+        let parser_options = ParserOptions::default();
+        let stylesheet = StyleSheet::parse(source_leaked, parser_options).expect("valid css");
         (source_leaked.to_string(), stylesheet)
     }
 
