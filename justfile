@@ -8,6 +8,7 @@ watch:
     just rust-watch
 
 fix:
+    just nix-fix
     just rust-fix
 
 shell:
@@ -70,6 +71,20 @@ nu-fix:
         --config nu-lint.toml \
         --fix
 
+nix-check:
+    fd \
+        --extension nix \
+        --exec nixfmt --check
+    statix check .
+    deadnix --fail .
+
+nix-fix:
+    fd \
+        --extension nix \
+        --exec nixfmt
+    statix fix .
+    deadnix --edit .
+
 test:
     just rust-test
 
@@ -79,6 +94,7 @@ woodpecker-check:
         .woodpecker/
 
 check:
+    just nix-check
     just nu-check
     just rust-check
     just woodpecker-check

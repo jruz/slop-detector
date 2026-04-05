@@ -7,20 +7,24 @@
     flake-utils.url = "github:numtide/flake-utils";
     nu-lint = {
       url = "git+https://codeberg.org/wvhulle/nu-lint?ref=refs/tags/v0.1.1";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
-      inputs.rust-overlay.follows = "rust-overlay";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-utils.follows = "flake-utils";
+        rust-overlay.follows = "rust-overlay";
+      };
     };
   };
 
-  outputs = {
-    nixpkgs,
-    rust-overlay,
-    flake-utils,
-    nu-lint,
-    ...
-  }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      nixpkgs,
+      rust-overlay,
+      flake-utils,
+      nu-lint,
+      ...
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
@@ -34,12 +38,15 @@
           cargo-nextest
           cargo-outdated
           cargo-watch
+          deadnix
           fd
           just
+          nixfmt
           nu-lint-package
           nushell
           ripgrep
           rust
+          statix
           taplo
           woodpecker-cli
           zip
@@ -52,10 +59,7 @@
           glibcLocales
         ];
         platformPackages =
-          if pkgs.stdenv.isDarwin then
-            commonPackages ++ darwinPackages
-          else
-            commonPackages ++ linuxPackages;
+          if pkgs.stdenv.isDarwin then commonPackages ++ darwinPackages else commonPackages ++ linuxPackages;
       in
       {
         devShells.default = pkgs.mkShell {
@@ -70,9 +74,11 @@
             echo "  Nextest:     ${pkgs.cargo-nextest.version}"
             echo "  Woodpecker:  ${pkgs.woodpecker-cli.version}"
             echo ""
-          '' + pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+          ''
+          + pkgs.lib.optionalString pkgs.stdenv.isLinux ''
             export LOCALE_ARCHIVE="${pkgs.glibcLocales}/lib/locale/locale-archive"
           '';
         };
-      });
+      }
+    );
 }
