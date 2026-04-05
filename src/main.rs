@@ -3,6 +3,7 @@ mod files;
 mod langs;
 mod output;
 mod types;
+mod version;
 
 use std::fs;
 use std::process::ExitCode;
@@ -70,6 +71,7 @@ fn run_check(cmd: SingleCommand) -> types::CheckResult {
 
 #[derive(Parser, Debug)]
 #[command(name = "slop-detector")]
+#[command(version = version::clap_version())]
 #[command(
     about = "Linter for detecting anti-patterns in CSS, Elixir, Gleam, JS/TS, Just, Playwright, Rust, Swift, and OpenTofu code"
 )]
