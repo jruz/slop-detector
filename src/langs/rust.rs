@@ -140,6 +140,11 @@ const RULES: &[Rule] = &[
         name: "no-spawn",
     },
     Rule {
+        check: check_no_sqlx_query_outside_models,
+        hint: Some("keep sqlx query construction inside models/"),
+        name: "no-sqlx-query-outside-models",
+    },
+    Rule {
         check: check_no_stderr_null,
         hint: Some("do not silence stderr, capture and handle it"),
         name: "no-stderr-null",
@@ -453,6 +458,31 @@ fn is_allowed_env_access_file(path: &str) -> bool {
         .file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| ALLOWED_ENV_ACCESS_FILES.contains(&name))
+}
+
+fn is_in_models_dir(path: &str) -> bool {
+    Path::new(path)
+        .components()
+        .any(|component| component.as_os_str().to_str() == Some("models"))
+}
+
+fn normalize_path_text(path: &str) -> String {
+    path.chars().filter(|ch| !ch.is_whitespace()).collect()
+}
+
+fn extract_sqlx_name(path: &str) -> Option<String> {
+    let normalized = normalize_path_text(path);
+    let trimmed = normalized.trim_start_matches("::");
+    let mut segments = trimmed.split("::");
+    if segments.next()? != "sqlx" {
+        return None;
+    }
+    let name = segments.next()?.split('<').next()?.to_string();
+    Some(name)
+}
+
+fn is_sqlx_query_name(name: &str) -> bool {
+    name == "query" || (name.starts_with("query_") && name != "query_builder")
 }
 
 fn check_no_direct_env_access(source: &str, ast: &SourceFile, path: &str) -> Vec<String> {
@@ -1256,6 +1286,55 @@ fn check_no_spawn(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     check_method_call(source, ast, "spawn")
 }
 
+fn check_no_sqlx_query_outside_models(source: &str, ast: &SourceFile, path: &str) -> Vec<String> {
+    if is_in_models_dir(path) {
+        return vec![];
+    }
+
+    let call_errors: Vec<String> = ast
+        .syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::CALL_EXPR {
+                return None;
+            }
+            let call = ast::CallExpr::cast(node.clone())?;
+            let ast::Expr::PathExpr(path_expr) = call.expr()? else {
+                return None;
+            };
+            let name = extract_sqlx_name(&path_expr.path()?.to_string())?;
+            if !is_sqlx_query_name(&name) {
+                return None;
+            }
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
+            Some(format!("line {line}: sqlx::{name}(...)"))
+        })
+        .collect();
+
+    let macro_errors: Vec<String> = ast
+        .syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::MACRO_CALL {
+                return None;
+            }
+            let macro_call = ast::MacroCall::cast(node.clone())?;
+            let name = extract_sqlx_name(&macro_call.path()?.to_string())?;
+            if !is_sqlx_query_name(&name) {
+                return None;
+            }
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
+            Some(format!("line {line}: sqlx::{name}!"))
+        })
+        .collect();
+
+    [call_errors, macro_errors].concat()
+}
+
 fn check_no_stderr_null(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
@@ -1789,6 +1868,34 @@ mod tests {
     fn no_spawn_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-spawn");
         let errors = check_no_spawn(&source, &ast, "src/main.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_sqlx_query_outside_models_detects_violation() {
+        let (source, ast) = parse_fixture("no-sqlx-query-outside-models");
+        let errors = check_no_sqlx_query_outside_models(&source, &ast, "src/server/health.rs");
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_sqlx_query_outside_models_allows_models_dir() {
+        let (source, ast) = parse_fixture("no-sqlx-query-outside-models");
+        let errors = check_no_sqlx_query_outside_models(&source, &ast, "src/models/user.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_sqlx_query_outside_models_does_not_allow_models_rs() {
+        let (source, ast) = parse_fixture("no-sqlx-query-outside-models");
+        let errors = check_no_sqlx_query_outside_models(&source, &ast, "src/models.rs");
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_sqlx_query_outside_models_allows_non_query_sqlx_usage() {
+        let (source, ast) = parse_fixture("valid-no-sqlx-query-outside-models");
+        let errors = check_no_sqlx_query_outside_models(&source, &ast, "src/server/health.rs");
         assert!(errors.is_empty());
     }
 
