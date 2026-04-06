@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::Path};
 
 use ra_ap_syntax::ast::{HasArgList as _, HasName as _};
 use ra_ap_syntax::{AstNode as _, SourceFile, SyntaxKind, ast};
@@ -46,6 +46,11 @@ const RULES: &[Rule] = &[
         check: check_no_drop_result,
         hint: Some("handle the Result instead of dropping it"),
         name: "no-drop-result",
+    },
+    Rule {
+        check: check_no_direct_env_access,
+        hint: Some("no direct env access, env should only be accessed through config.rs or env.rs"),
+        name: "no-direct-env-access",
     },
     Rule {
         check: check_no_nested_call_args,
@@ -256,6 +261,7 @@ fn check_pinned_versions(toml: &toml::Value) -> Vec<String> {
 }
 
 const ALLOW_ATTR: &str = "allow";
+const ALLOWED_ENV_ACCESS_FILES: &[&str] = &["config.rs", "env.rs"];
 
 fn check_no_allow_attr(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
@@ -438,6 +444,47 @@ fn check_no_drop_result(source: &str, ast: &SourceFile, _path: &str) -> Vec<Stri
                 return Some(format!("line {line}: drop(...)"));
             }
             None
+        })
+        .collect()
+}
+
+fn is_allowed_env_access_file(path: &str) -> bool {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| ALLOWED_ENV_ACCESS_FILES.contains(&name))
+}
+
+fn check_no_direct_env_access(source: &str, ast: &SourceFile, path: &str) -> Vec<String> {
+    if is_allowed_env_access_file(path) {
+        return vec![];
+    }
+
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::CALL_EXPR {
+                return None;
+            }
+            let syntax_node = node.clone();
+            let call = ast::CallExpr::cast(syntax_node)?;
+            let ast::Expr::PathExpr(path_expr) = call.expr()? else {
+                return None;
+            };
+            let call_path = path_expr.path()?.to_string();
+            let normalized_path: String =
+                call_path.chars().filter(|ch| !ch.is_whitespace()).collect();
+            let is_direct_env_access = matches!(
+                normalized_path.as_str(),
+                "std::env::var" | "::std::env::var" | "env::var"
+            );
+            if !is_direct_env_access {
+                return None;
+            }
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
+            Some(format!("line {line}: {normalized_path}()"))
         })
         .collect()
 }
@@ -1476,6 +1523,27 @@ mod tests {
     fn no_drop_result_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-drop-result");
         let errors = check_no_drop_result(&source, &ast, "src/main.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_direct_env_access_detects_violation() {
+        let (source, ast) = parse_fixture("no-direct-env-access");
+        let errors = check_no_direct_env_access(&source, &ast, "src/main.rs");
+        assert_eq!(errors.len(), 2);
+    }
+
+    #[test]
+    fn no_direct_env_access_allows_config_file() {
+        let (source, ast) = parse_fixture("valid-no-direct-env-access");
+        let errors = check_no_direct_env_access(&source, &ast, "src/config.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_direct_env_access_allows_env_file() {
+        let (source, ast) = parse_fixture("valid-no-direct-env-access");
+        let errors = check_no_direct_env_access(&source, &ast, "src/env.rs");
         assert!(errors.is_empty());
     }
 

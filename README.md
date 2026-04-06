@@ -113,6 +113,7 @@ slop-detector --create-config-for-violations
 - `no-discard-result` - Handle Result instead of `let _ =`
 - `no-discard-try-value` - Check the success value instead of `let _var = expr?`
 - `no-drop-result` - Handle Result instead of dropping
+- `no-direct-env-access` - Access env only through config.rs or env.rs
 - `no-expect-attr` - Refactor instead of suppressing lints
 - `no-expect-outside-tests` - Use ? or match, expect only in tests
 - `no-if-let-ok-without-else` - Add else to handle error case
