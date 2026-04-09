@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
-use ra_ap_syntax::ast::{HasArgList as _, HasAttrs as _, HasName as _};
+use ra_ap_syntax::ast::{HasArgList as _, HasAttrs as _, HasName as _, HasVisibility as _};
 use ra_ap_syntax::{AstNode as _, SourceFile, SyntaxKind, ast};
 
 use crate::files::find_files;
@@ -128,6 +128,11 @@ const RULES: &[Rule] = &[
         check: check_no_print_outside_main,
         hint: Some("print statements should only be in main()"),
         name: "no-print-outside-main",
+    },
+    Rule {
+        check: check_no_pub_crate_fn,
+        hint: Some("use pub instead, the project is a single crate"),
+        name: "no-pub-crate-fn",
     },
     Rule {
         check: check_no_return_ok,
@@ -1421,6 +1426,26 @@ fn check_no_print_outside_main(source: &str, ast: &SourceFile, _path: &str) -> V
         .collect()
 }
 
+fn check_no_pub_crate_fn(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::FN {
+                return None;
+            }
+            let func = ast::Fn::cast(node)?;
+            let vis = func.visibility()?;
+            if vis.syntax().to_string() != "pub(crate)" {
+                return None;
+            }
+            let name = func.name()?;
+            let offset: usize = vis.syntax().text_range().start().into();
+            let line = line_number(source, offset);
+            Some(format!("line {line}: pub(crate) fn {name}"))
+        })
+        .collect()
+}
+
 fn check_no_return_ok(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
         .descendants()
@@ -2249,6 +2274,20 @@ mod tests {
     fn no_inline_style_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-inline-style");
         let errors = check_no_inline_style(&source, &ast, "src/main.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_pub_crate_fn_detects_violation() {
+        let (source, ast) = parse_fixture("no-pub-crate-fn");
+        let errors = check_no_pub_crate_fn(&source, &ast, "src/main.rs");
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn no_pub_crate_fn_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-pub-crate-fn");
+        let errors = check_no_pub_crate_fn(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
 

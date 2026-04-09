@@ -130,6 +130,7 @@ slop-detector --create-config-for-violations
 - `no-ok-and-propagate` - Use ? on Result directly, not .ok()?
 - `no-ok-method` - Handle error explicitly, don't discard with .ok()
 - `no-print-outside-main` - Keep print statements in main()
+- `no-pub-crate-fn` - Use pub instead of pub(crate) in single-crate projects
 - `no-return-ok` - Don't hide errors with return Ok(())
 - `no-spawn` - Use .output() or .status() instead of .spawn()
 - `no-sqlx-query-outside-models` - Keep `sqlx::query*` usage inside `models/`
