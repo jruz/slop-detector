@@ -281,7 +281,7 @@ fn check_pinned_versions(toml: &toml::Value) -> Vec<String> {
 }
 
 const ALLOW_ATTR: &str = "allow";
-const ALLOWED_ENV_ACCESS_FILES: &[&str] = &["config.rs", "env.rs"];
+const ALLOWED_ENV_ACCESS_FILES: &[&str] = &["build.rs", "config.rs", "env.rs"];
 
 fn check_no_allow_attr(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
@@ -1831,6 +1831,13 @@ mod tests {
     fn no_direct_env_access_allows_env_file() {
         let (source, ast) = parse_fixture("valid-no-direct-env-access");
         let errors = check_no_direct_env_access(&source, &ast, "src/env.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_direct_env_access_allows_build_file() {
+        let (source, ast) = parse_fixture("valid-no-direct-env-access");
+        let errors = check_no_direct_env_access(&source, &ast, "build.rs");
         assert!(errors.is_empty());
     }
 
