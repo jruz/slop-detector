@@ -133,6 +133,8 @@ slop-detector --create-config-for-violations
 - `no-return-ok` - Don't hide errors with return Ok(())
 - `no-spawn` - Use .output() or .status() instead of .spawn()
 - `no-sqlx-query-outside-models` - Keep `sqlx::query*` usage inside `models/`
+- `no-sqlx-query-without-skip-pool` - Add `skip(pool)` when an instrumented query function takes `pool`
+- `no-sqlx-query-without-tracing-instrument` - Add `#[tracing::instrument]` to query functions
 - `no-stderr-null` - Don't silence stderr with Stdio::null()
 - `no-swallowed-err` - Don't ignore Err in match arms
 - `no-trait-impl` - Avoid trait implementations

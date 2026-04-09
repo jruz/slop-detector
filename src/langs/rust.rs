@@ -1,6 +1,6 @@
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path};
 
-use ra_ap_syntax::ast::{HasArgList as _, HasName as _};
+use ra_ap_syntax::ast::{HasArgList as _, HasAttrs as _, HasName as _};
 use ra_ap_syntax::{AstNode as _, SourceFile, SyntaxKind, ast};
 
 use crate::files::find_files;
@@ -143,6 +143,16 @@ const RULES: &[Rule] = &[
         check: check_no_sqlx_query_outside_models,
         hint: Some("keep sqlx query construction inside models/"),
         name: "no-sqlx-query-outside-models",
+    },
+    Rule {
+        check: check_no_sqlx_query_without_tracing_instrument,
+        hint: Some("add #[tracing::instrument] to the enclosing function"),
+        name: "no-sqlx-query-without-tracing-instrument",
+    },
+    Rule {
+        check: check_no_sqlx_query_without_skip_pool,
+        hint: Some("add skip(pool) to #[tracing::instrument(...)] when pool is a parameter"),
+        name: "no-sqlx-query-without-skip-pool",
     },
     Rule {
         check: check_no_stderr_null,
@@ -483,6 +493,157 @@ fn extract_sqlx_name(path: &str) -> Option<String> {
 
 fn is_sqlx_query_name(name: &str) -> bool {
     name == "query" || (name.starts_with("query_") && name != "query_builder")
+}
+
+fn is_sqlx_query_call(node: &ra_ap_syntax::SyntaxNode) -> bool {
+    let syntax_node = node.clone();
+    let Some(call) = ast::CallExpr::cast(syntax_node) else {
+        return false;
+    };
+    let Some(ast::Expr::PathExpr(path_expr)) = call.expr() else {
+        return false;
+    };
+    let Some(path) = path_expr.path() else {
+        return false;
+    };
+    let path_text = path.to_string();
+    let Some(name) = extract_sqlx_name(&path_text) else {
+        return false;
+    };
+    is_sqlx_query_name(&name)
+}
+
+fn is_sqlx_query_macro(node: &ra_ap_syntax::SyntaxNode) -> bool {
+    let syntax_node = node.clone();
+    let Some(macro_call) = ast::MacroCall::cast(syntax_node) else {
+        return false;
+    };
+    let Some(path) = macro_call.path() else {
+        return false;
+    };
+    let path_text = path.to_string();
+    let Some(name) = extract_sqlx_name(&path_text) else {
+        return false;
+    };
+    is_sqlx_query_name(&name)
+}
+
+fn is_sqlx_query_node(node: &ra_ap_syntax::SyntaxNode) -> bool {
+    match node.kind() {
+        SyntaxKind::CALL_EXPR => is_sqlx_query_call(node),
+        SyntaxKind::MACRO_CALL => is_sqlx_query_macro(node),
+        _ => false,
+    }
+}
+
+fn enclosing_fn(node: &ra_ap_syntax::SyntaxNode) -> Option<ast::Fn> {
+    node.ancestors().find_map(ast::Fn::cast)
+}
+
+fn has_pool_param(func: &ast::Fn) -> bool {
+    let Some(param_list) = func.param_list() else {
+        return false;
+    };
+    param_list.params().any(|param| {
+        let Some(ast::Pat::IdentPat(ident)) = param.pat() else {
+            return false;
+        };
+        ident.name().is_some_and(|name| name.text() == "pool")
+    })
+}
+
+fn is_instrument_attr(attr: &ast::Attr) -> bool {
+    let Some(path) = attr.path() else {
+        return false;
+    };
+    let path_text = path.to_string();
+    let normalized = normalize_path_text(&path_text);
+    let trimmed = normalized.trim_start_matches("::");
+    trimmed == "instrument" || trimmed == "tracing::instrument"
+}
+
+fn attr_skips_pool(attr: &ast::Attr) -> bool {
+    let Some(token_tree) = attr.token_tree() else {
+        return false;
+    };
+    let token_tree_text = token_tree.to_string();
+    let normalized = normalize_path_text(&token_tree_text);
+    normalized.contains("skip(pool")
+}
+
+fn fn_name(func: &ast::Fn) -> String {
+    match func.name() {
+        Some(name) => name.text().to_string(),
+        None => "?".to_string(),
+    }
+}
+
+fn has_instrument_attr(func: &ast::Fn) -> bool {
+    func.attrs().any(|attr| is_instrument_attr(&attr))
+}
+
+fn has_instrument_attr_with_pool_skip(func: &ast::Fn) -> bool {
+    func.attrs()
+        .any(|attr| is_instrument_attr(&attr) && attr_skips_pool(&attr))
+}
+
+fn missing_tracing_instrument_error(
+    source: &str,
+    node: &ra_ap_syntax::SyntaxNode,
+) -> Option<(usize, String)> {
+    let func = enclosing_fn(node)?;
+    if has_instrument_attr(&func) {
+        return None;
+    }
+    let start = func.syntax().text_range().start();
+    let offset: usize = start.into();
+    let line = line_number(source, offset);
+    let fn_name = fn_name(&func);
+    Some((
+        offset,
+        format!("line {line}: fn {fn_name} missing #[tracing::instrument]"),
+    ))
+}
+
+fn missing_pool_skip_error(
+    source: &str,
+    node: &ra_ap_syntax::SyntaxNode,
+) -> Option<(usize, String)> {
+    let func = enclosing_fn(node)?;
+    if !has_pool_param(&func)
+        || !has_instrument_attr(&func)
+        || has_instrument_attr_with_pool_skip(&func)
+    {
+        return None;
+    }
+    let start = func.syntax().text_range().start();
+    let offset: usize = start.into();
+    let line = line_number(source, offset);
+    let fn_name = fn_name(&func);
+    Some((
+        offset,
+        format!("line {line}: fn {fn_name} missing skip(pool) in #[tracing::instrument(...)]"),
+    ))
+}
+
+fn collect_sqlx_query_fn_errors(
+    source: &str,
+    ast: &SourceFile,
+    error_for_query: fn(&str, &ra_ap_syntax::SyntaxNode) -> Option<(usize, String)>,
+) -> Vec<String> {
+    let mut errors = BTreeMap::new();
+
+    for node in ast.syntax().descendants() {
+        if !is_sqlx_query_node(&node) {
+            continue;
+        }
+        let Some((offset, error)) = error_for_query(source, &node) else {
+            continue;
+        };
+        errors.entry(offset).or_insert(error);
+    }
+
+    errors.into_values().collect()
 }
 
 fn check_no_direct_env_access(source: &str, ast: &SourceFile, path: &str) -> Vec<String> {
@@ -1298,11 +1459,14 @@ fn check_no_sqlx_query_outside_models(source: &str, ast: &SourceFile, path: &str
             if node.kind() != SyntaxKind::CALL_EXPR {
                 return None;
             }
-            let call = ast::CallExpr::cast(node.clone())?;
+            let syntax_node = node.clone();
+            let call = ast::CallExpr::cast(syntax_node)?;
             let ast::Expr::PathExpr(path_expr) = call.expr()? else {
                 return None;
             };
-            let name = extract_sqlx_name(&path_expr.path()?.to_string())?;
+            let query_path = path_expr.path()?;
+            let path_text = query_path.to_string();
+            let name = extract_sqlx_name(&path_text)?;
             if !is_sqlx_query_name(&name) {
                 return None;
             }
@@ -1320,8 +1484,11 @@ fn check_no_sqlx_query_outside_models(source: &str, ast: &SourceFile, path: &str
             if node.kind() != SyntaxKind::MACRO_CALL {
                 return None;
             }
-            let macro_call = ast::MacroCall::cast(node.clone())?;
-            let name = extract_sqlx_name(&macro_call.path()?.to_string())?;
+            let syntax_node = node.clone();
+            let macro_call = ast::MacroCall::cast(syntax_node)?;
+            let macro_path = macro_call.path()?;
+            let path_text = macro_path.to_string();
+            let name = extract_sqlx_name(&path_text)?;
             if !is_sqlx_query_name(&name) {
                 return None;
             }
@@ -1333,6 +1500,22 @@ fn check_no_sqlx_query_outside_models(source: &str, ast: &SourceFile, path: &str
         .collect();
 
     [call_errors, macro_errors].concat()
+}
+
+fn check_no_sqlx_query_without_tracing_instrument(
+    source: &str,
+    ast: &SourceFile,
+    _path: &str,
+) -> Vec<String> {
+    collect_sqlx_query_fn_errors(source, ast, missing_tracing_instrument_error)
+}
+
+fn check_no_sqlx_query_without_skip_pool(
+    source: &str,
+    ast: &SourceFile,
+    _path: &str,
+) -> Vec<String> {
+    collect_sqlx_query_fn_errors(source, ast, missing_pool_skip_error)
 }
 
 fn check_no_stderr_null(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
@@ -1896,6 +2079,36 @@ mod tests {
     fn no_sqlx_query_outside_models_allows_non_query_sqlx_usage() {
         let (source, ast) = parse_fixture("valid-no-sqlx-query-outside-models");
         let errors = check_no_sqlx_query_outside_models(&source, &ast, "src/server/health.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_sqlx_query_without_tracing_instrument_detects_violation() {
+        let (source, ast) = parse_fixture("no-sqlx-query-without-tracing-instrument");
+        let errors =
+            check_no_sqlx_query_without_tracing_instrument(&source, &ast, "src/models/user.rs");
+        assert_eq!(errors.len(), 2);
+    }
+
+    #[test]
+    fn no_sqlx_query_without_tracing_instrument_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-sqlx-query-without-tracing-instrument");
+        let errors =
+            check_no_sqlx_query_without_tracing_instrument(&source, &ast, "src/models/user.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_sqlx_query_without_skip_pool_detects_violation() {
+        let (source, ast) = parse_fixture("no-sqlx-query-without-skip-pool");
+        let errors = check_no_sqlx_query_without_skip_pool(&source, &ast, "src/models/user.rs");
+        assert_eq!(errors.len(), 2);
+    }
+
+    #[test]
+    fn no_sqlx_query_without_skip_pool_allows_valid() {
+        let (source, ast) = parse_fixture("valid-no-sqlx-query-without-skip-pool");
+        let errors = check_no_sqlx_query_without_skip_pool(&source, &ast, "src/models/user.rs");
         assert!(errors.is_empty());
     }
 
