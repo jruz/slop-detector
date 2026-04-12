@@ -254,6 +254,28 @@ fn is_nested_call_argument(arg: &Argument<'_>) -> bool {
     }
 }
 
+fn is_err_check(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::CallExpression(call) => match &call.callee {
+            Expression::StaticMemberExpression(member) => member.property.name == "isErr",
+            _ => false,
+        },
+        Expression::UnaryExpression(unary) => is_err_check(&unary.argument),
+        _ => false,
+    }
+}
+
+fn is_silent_return(stmt: &oxc::ast::ast::Statement<'_>) -> bool {
+    match stmt {
+        oxc::ast::ast::Statement::ReturnStatement(ret) => ret.argument.is_none(),
+        oxc::ast::ast::Statement::BlockStatement(block) => block
+            .body
+            .first()
+            .is_some_and(|first| block.body.len() == 1 && is_silent_return(first)),
+        _ => false,
+    }
+}
+
 struct TsVisitor<'src> {
     array_as_const_errors: Vec<String>,
     satisfies_errors: Vec<String>,
@@ -268,6 +290,7 @@ struct TsVisitor<'src> {
     default_errors: Vec<String>,
     source: &'src str,
     stderr_write_errors: Vec<String>,
+    silent_err_return_errors: Vec<String>,
     stdout_write_errors: Vec<String>,
 }
 
@@ -408,6 +431,15 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
         walk::walk_for_of_statement(self, stmt);
     }
 
+    fn visit_if_statement(&mut self, stmt: &oxc::ast::ast::IfStatement<'src>) {
+        if is_err_check(&stmt.test) && is_silent_return(&stmt.consequent) {
+            let line = line_number(self.source, stmt.span.start);
+            self.silent_err_return_errors
+                .push(format!("line {line}: if (_.isErr()) return"));
+        }
+        walk::walk_if_statement(self, stmt);
+    }
+
     fn visit_ts_interface_declaration(
         &mut self,
         decl: &oxc::ast::ast::TSInterfaceDeclaration<'src>,
@@ -470,6 +502,11 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
             Some("use console.error instead"),
         ),
         (
+            "no-silent-err-return",
+            visitor.silent_err_return_errors,
+            Some("handle the error in the UI or at least log it"),
+        ),
+        (
             "no-stdout-write",
             visitor.stdout_write_errors,
             Some("use log.ts"),
@@ -505,6 +542,7 @@ fn create_visitor<'src>(source: &'src str, path: &'src str) -> TsVisitor<'src> {
         path,
         throwing_fn_errors: Vec::new(),
         default_errors: Vec::new(),
+        silent_err_return_errors: Vec::new(),
         source,
         stderr_write_errors: Vec::new(),
         stdout_write_errors: Vec::new(),
@@ -795,6 +833,19 @@ mod tests {
         let violations = parse_ts_fixture("no-stdout-write");
         assert!(has_violation(&violations, "no-stdout-write"));
         assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_silent_err_return_detects_violation() {
+        let violations = parse_ts_fixture("no-silent-err-return");
+        assert!(has_violation(&violations, "no-silent-err-return"));
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn no_silent_err_return_allows_valid() {
+        let violations = parse_ts_fixture("valid-no-silent-err-return");
+        assert!(!has_violation(&violations, "no-silent-err-return"));
     }
 
     #[test]

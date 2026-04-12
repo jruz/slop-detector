@@ -89,6 +89,7 @@ slop-detector --create-config-for-violations
 - `no-defaults` - Avoid `x ?? fallback`, `x || fallback` with literal defaults
 - `no-eslint-disable` - Fix the violation instead of disabling the rule
 - `no-satisfies` - Declare the type instead
+- `no-silent-err-return` - Handle the error in the UI or at least log it
 - `no-stderr-write` - Avoid writing to stderr
 - `no-stdout-write` - Use log.ts
 
