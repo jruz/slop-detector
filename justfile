@@ -8,17 +8,19 @@ watch:
     just rust-watch
 
 fix:
-    just nix-fix
-    just rust-fix
+    #!/usr/bin/env nu
+    if (which sandbox | is-empty) { exit 0 }
+    ^just nix-fix
+    ^just rust-fix
 
 shell:
     nix develop --command nu
 
 rust-build:
-    cargo build --all-targets
+    sandbox cargo build --all-targets
 
 rust-cargo-check:
-    cargo check --all-targets
+    sandbox cargo check --all-targets
 
 rust-check:
     just rust-cargo-check
@@ -27,36 +29,36 @@ rust-check:
     just rust-test
 
 rust-clippy-check *ARGS='':
-    cargo clippy --all-targets {{ARGS}}
+    sandbox cargo clippy --all-targets {{ARGS}}
 
 rust-clippy-fix *ARGS='':
-    cargo clippy --fix --all-targets --allow-dirty {{ARGS}}
+    sandbox cargo clippy --fix --all-targets --allow-dirty {{ARGS}}
 
 rust-fix:
     just rust-fmt-fix
     just rust-clippy-fix
 
 rust-fmt-check:
-    cargo fmt --all -- --check
+    sandbox cargo fmt --all -- --check
 
 rust-fmt-fix:
-    cargo fmt --all
+    sandbox cargo fmt --all
 
 rust-run *ARGS='':
-    cargo run -- {{ARGS}}
+    sandbox cargo run -- {{ARGS}}
 
 rust-watch:
-    cargo watch --exec run
+    sandbox cargo watch --exec run
 
 rust-outdated:
-    cargo outdated
+    sandbox cargo outdated
 
 rust-test *FILTER='':
-    cargo nextest run --no-tests=pass {{FILTER}}
+    sandbox cargo nextest run --no-tests=pass {{FILTER}}
 
 rust-upgrade:
-    cargo upgrade --incompatible
-    cargo update
+    sandbox cargo upgrade --incompatible
+    sandbox cargo update
 
 nu-check:
     #!/usr/bin/env nu
@@ -94,13 +96,18 @@ woodpecker-check:
         .woodpecker/
 
 check:
-    just nix-check
-    just nu-check
-    just rust-check
-    just woodpecker-check
+    #!/usr/bin/env nu
+    if (which sandbox | is-empty) { exit 0 }
+    ^just nix-check
+    ^just nu-check
+    ^just rust-check
+    ^just woodpecker-check
+
+sandbox-test:
+    sandbox bun scripts/sandbox-test.ts
 
 build:
-    cargo build --release
+    sandbox cargo build --release
 
 # ---------------- RELEASE BUILDS
 
@@ -169,7 +176,7 @@ ci-check:
 # ---------------- INSTALL
 
 install:
-    cargo install --path . --force
+    sandbox cargo install --path . --force
 
 # ---------------- RELEASE
 
@@ -184,7 +191,7 @@ release-tag:
     print $"(ansi green)OK: Pushed signed tag ($tag)(ansi reset)"
 
 release-upload TAG:
-    bun scripts/release-upload.ts {{ TAG }}
+    sandbox bun scripts/release-upload.ts {{ TAG }}
 
 release-delete TAG:
-    bun scripts/release-delete.ts {{ TAG }}
+    sandbox bun scripts/release-delete.ts {{ TAG }}

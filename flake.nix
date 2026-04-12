@@ -40,12 +40,63 @@
         rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         nu-lint-package = nu-lint.packages.${system}.default;
         revision = self.rev or "dirty";
+        sandboxPath = pkgs.lib.makeBinPath [
+          rust
+          pkgs.bash
+          pkgs.bun
+          pkgs.cargo-edit
+          pkgs.cargo-nextest
+          pkgs.cargo-outdated
+          pkgs.cargo-watch
+          pkgs.coreutils
+          pkgs.docker-client
+          pkgs.findutils
+          pkgs.git
+          pkgs.gnugrep
+          pkgs.just
+          pkgs.nushell
+          pkgs.ripgrep
+          pkgs.taplo
+          pkgs.zip
+          pkgs.stdenv.cc
+        ];
+        sandbox = pkgs.writeShellScriptBin "sandbox" ''
+          SELF_DIR="$(dirname "$(readlink -f "$0")")"
+          SANDBOX_CMD="''${@:-$SHELL}"
+          ARGS=(
+            --unshare-user
+            --unshare-ipc
+            --unshare-uts
+            --unshare-cgroup
+            --share-net
+            --die-with-parent
+            --ro-bind /nix /nix
+            --ro-bind /etc/resolv.conf /etc/resolv.conf
+            --ro-bind /etc/ssl /etc/ssl
+            --ro-bind-try /etc/static /etc/static
+            --ro-bind-try /etc/nix /etc/nix
+            --ro-bind-try /run/current-system/sw /run/current-system/sw
+            --symlink ${pkgs.coreutils}/bin/env /usr/bin/env
+            --symlink ${pkgs.bash}/bin/bash /bin/sh
+            --tmpfs "$HOME"
+            --bind "$(pwd)" "$(pwd)"
+            --bind /tmp /tmp
+            --ro-bind "$(git rev-parse --git-common-dir)" "$(git rev-parse --git-common-dir)"
+            --ro-bind-try "$HOME/.gitconfig" "$HOME/.gitconfig"
+            --ro-bind-try "$HOME/.ssh/known_hosts" "$HOME/.ssh/known_hosts"
+            --setenv PATH "${sandboxPath}:$SELF_DIR"
+            --setenv HOME "$HOME"
+            --setenv REVISION "''${REVISION:-dev}"
+            --dev /dev
+            --proc /proc
+          )
+          ARGS+=(
+            --bind-try "$HOME/.cargo" "$HOME/.cargo"
+            --bind-try "$HOME/.bun" "$HOME/.bun"
+          )
+          exec ${pkgs.bubblewrap}/bin/bwrap "''${ARGS[@]}" -- $SANDBOX_CMD
+        '';
         commonPackages = with pkgs; [
-          bun
-          cargo-edit
-          cargo-nextest
-          cargo-outdated
-          cargo-watch
           deadnix
           fd
           just
@@ -53,11 +104,10 @@
           nu-lint-package
           nushell
           ripgrep
-          rust
+          sandbox
           statix
           taplo
           woodpecker-cli
-          zip
         ];
         darwinPackages = with pkgs; [
           libiconv
@@ -88,10 +138,9 @@
             echo ""
             echo "  ${cargoToml.package.name} Development Shell"
             echo "  ───────────────────────────"
-            echo "  Rust:        ${rustVersion}"
-            echo "  Bun:         ${pkgs.bun.version}"
-            echo "  Nextest:     ${pkgs.cargo-nextest.version}"
-            echo "  Woodpecker:  ${pkgs.woodpecker-cli.version}"
+            echo "  Rust:        ${rustVersion} (sandbox)"
+            echo "  Bun:         ${pkgs.bun.version} (sandbox)"
+            echo "  Woodpecker:  ${pkgs.woodpecker-cli.version} (sandbox)"
             echo ""
           ''
           + pkgs.lib.optionalString pkgs.stdenv.isLinux ''
