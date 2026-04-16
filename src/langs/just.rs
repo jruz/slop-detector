@@ -430,19 +430,19 @@ fn check_no_recipe_deps(source: &str, tree: &Tree) -> Vec<String> {
 fn strip_quoted(line: &str) -> String {
     let capacity = line.len();
     let mut result = String::with_capacity(capacity);
-    let mut quote: Option<char> = None;
-    for c in line.chars() {
-        match quote {
-            Some(q) if c == q => {
-                quote = None;
+    let mut opener: Option<char> = None;
+    for ch in line.chars() {
+        match opener {
+            Some(open_ch) if ch == open_ch => {
+                opener = None;
                 result.push(' ');
             }
             Some(_) => result.push(' '),
-            None if c == '\'' || c == '"' => {
-                quote = Some(c);
+            None if ch == '\'' || ch == '"' => {
+                opener = Some(ch);
                 result.push(' ');
             }
-            None => result.push(c),
+            None => result.push(ch),
         }
     }
     result
