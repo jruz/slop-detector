@@ -75,6 +75,11 @@ const RULES: &[Rule] = &[
         hint: Some("use UPPERCASE for recipe arguments"),
         name: "no-lowercase-args",
     },
+    Rule {
+        check: check_no_multi_flags,
+        hint: Some("put one flag per line"),
+        name: "no-multi-flags",
+    },
 ];
 
 struct ParsedJust {
@@ -422,6 +427,45 @@ fn check_no_recipe_deps(source: &str, tree: &Tree) -> Vec<String> {
     errors
 }
 
+fn flag_points(line: &str) -> usize {
+    line.split_whitespace()
+        .filter(|token| token.starts_with("--") && token.len() > 2)
+        .map(|token| if token.contains('=') { 2 } else { 1 })
+        .sum()
+}
+
+fn check_no_multi_flags(source: &str, tree: &Tree) -> Vec<String> {
+    let source_bytes = source.as_bytes();
+    let mut recipes = Vec::new();
+    let root = tree.root_node();
+    find_recipes(root, &mut recipes);
+
+    let mut errors = Vec::new();
+    for recipe in &recipes {
+        for (line_num, text) in recipe_body_lines(*recipe, source_bytes) {
+            if flag_points(text) <= 2 {
+                continue;
+            }
+            match recipe_name(*recipe, source_bytes) {
+                Ok(Some(name)) => {
+                    errors.push(format!(
+                        "line {line_num}: recipe `{name}` has too many flags on one line"
+                    ));
+                }
+                Ok(None) => {
+                    errors.push(format!(
+                        "line {line_num}: recipe has too many flags on one line"
+                    ));
+                }
+                Err(utf8_err) => {
+                    errors.push(format!("UTF-8 error: {utf8_err}"));
+                }
+            }
+        }
+    }
+    errors
+}
+
 fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
     match find_files(patterns, excludes) {
         Ok(found) => (found, vec![]),
@@ -593,6 +637,20 @@ mod tests {
     fn no_lowercase_args_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-lowercase-args");
         let errors = check_no_lowercase_args(&source, &tree);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_multi_flags_detects_violation() {
+        let (source, tree) = parse_fixture("no-multi-flags");
+        let errors = check_no_multi_flags(&source, &tree);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_multi_flags_allows_valid() {
+        let (source, tree) = parse_fixture("valid-no-multi-flags");
+        let errors = check_no_multi_flags(&source, &tree);
         assert!(errors.is_empty());
     }
 }

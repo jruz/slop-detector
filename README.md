@@ -99,6 +99,7 @@ slop-detector --create-config-for-violations
 - `no-external-without-caret` - Use `^command` to mark external commands in nu recipes
 - `no-long-lines` - Max 80 chars per line; break with `\` (bash) or `(\n` + indent (nu)
 - `no-lowercase-args` - Use UPPERCASE for recipe arguments
+- `no-multi-flags` - Put valued flags (`--flag=X`) on their own line; max 2 boolean flags per line
 - `no-recipe-deps` - Call dependencies explicitly with `just <recipe>` in the body
 
 ### Playwright
