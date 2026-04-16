@@ -427,8 +427,30 @@ fn check_no_recipe_deps(source: &str, tree: &Tree) -> Vec<String> {
     errors
 }
 
+fn strip_quoted(line: &str) -> String {
+    let capacity = line.len();
+    let mut result = String::with_capacity(capacity);
+    let mut quote: Option<char> = None;
+    for c in line.chars() {
+        match quote {
+            Some(q) if c == q => {
+                quote = None;
+                result.push(' ');
+            }
+            Some(_) => result.push(' '),
+            None if c == '\'' || c == '"' => {
+                quote = Some(c);
+                result.push(' ');
+            }
+            None => result.push(c),
+        }
+    }
+    result
+}
+
 fn flag_points(line: &str) -> usize {
-    line.split_whitespace()
+    strip_quoted(line)
+        .split_whitespace()
         .filter(|token| token.starts_with("--") && token.len() > 2)
         .map(|token| if token.contains('=') { 2 } else { 1 })
         .sum()

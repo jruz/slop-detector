@@ -11,3 +11,6 @@ run:
     docker run \
         --name=app \
         --port=8080
+
+exec:
+    fd --exec nu --commands 'nu-check --debug --strict {}'
