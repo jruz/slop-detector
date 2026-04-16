@@ -32,7 +32,11 @@ rust-clippy-check *ARGS='':
     sandbox cargo clippy --all-targets {{ARGS}}
 
 rust-clippy-fix *ARGS='':
-    sandbox cargo clippy --fix --all-targets --allow-dirty {{ARGS}}
+    sandbox cargo clippy \
+        --fix \
+        --all-targets \
+        --allow-dirty \
+        {{ARGS}}
 
 rust-fix:
     just rust-fmt-fix
