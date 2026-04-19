@@ -282,6 +282,7 @@ fn check_pinned_versions(toml: &toml::Value) -> Vec<String> {
 
 const ALLOW_ATTR: &str = "allow";
 const ALLOWED_ENV_ACCESS_FILES: &[&str] = &["build.rs", "config.rs", "env.rs"];
+const ALLOWED_ALLOW_LINTS: &[&str] = &["non_camel_case_types"];
 
 fn check_no_allow_attr(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     ast.syntax()
@@ -295,12 +296,32 @@ fn check_no_allow_attr(source: &str, ast: &SourceFile, _path: &str) -> Vec<Strin
             if path.to_string() != ALLOW_ATTR {
                 return None;
             }
+            let token_tree = attr.token_tree()?;
+            let token_text = token_tree.to_string();
+            let lints = parse_allow_lints(&token_text);
+            if lints.iter().all(|lint| is_allowed_allow_lint(lint)) {
+                return None;
+            }
             let syntax = attr.syntax();
             let start = syntax.text_range().start();
             let offset: usize = start.into();
             let line = line_number(source, offset);
             Some(format!("line {line}: #[{ALLOW_ATTR}(...)]"))
         })
+        .collect()
+}
+
+fn is_allowed_allow_lint(lint: &str) -> bool {
+    ALLOWED_ALLOW_LINTS.contains(&lint)
+}
+
+fn parse_allow_lints(token_tree_text: &str) -> Vec<String> {
+    token_tree_text
+        .trim_start_matches('(')
+        .trim_end_matches(')')
+        .split(',')
+        .map(|lint| lint.trim().to_string())
+        .filter(|lint| !lint.is_empty())
         .collect()
 }
 
@@ -1738,7 +1759,7 @@ mod tests {
 
     #[test]
     fn no_allow_attr_allows_valid() {
-        let (source, ast) = parse_fixture("valid-no-attrs");
+        let (source, ast) = parse_fixture("valid-no-allow-attr");
         let errors = check_no_allow_attr(&source, &ast, "src/main.rs");
         assert!(errors.is_empty());
     }
