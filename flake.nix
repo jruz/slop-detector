@@ -50,6 +50,7 @@
           pkgs.cargo-watch
           pkgs.coreutils
           pkgs.docker-client
+          pkgs.fd
           pkgs.findutils
           pkgs.git
           pkgs.gnugrep
