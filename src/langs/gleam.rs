@@ -5,7 +5,7 @@ use tree_sitter::{Node, Parser, Tree};
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
-const EXCLUDES: &[&str] = &["build", "fixtures"];
+const EXCLUDES: &[&str] = &["build"];
 const GLEAM_PATTERNS: &[&str] = &["*.gleam"];
 const GLEAM_TOML_PATTERNS: &[&str] = &["gleam.toml"];
 

@@ -13,7 +13,7 @@ use oxc_ast_visit::{Visit, walk};
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
-const EXCLUDES: &[&str] = &["fixtures"];
+const EXCLUDES: &[&str] = &[];
 const PACKAGE_JSON_PATTERNS: &[&str] = &["package.json"];
 const TS_PATTERNS: &[&str] = &["*.ts", "*.tsx"];
 

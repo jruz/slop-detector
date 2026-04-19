@@ -5,7 +5,7 @@ use hcl::{Body, Expression};
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
-const EXCLUDES: &[&str] = &["fixtures"];
+const EXCLUDES: &[&str] = &[];
 const PATTERNS: &[&str] = &["nomad/*.hcl", "*.hcl"];
 
 struct ParsedNomadFile {

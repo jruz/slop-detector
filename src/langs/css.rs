@@ -5,7 +5,7 @@ use lightningcss::stylesheet::{ParserOptions, StyleSheet};
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
-const EXCLUDES: &[&str] = &["fixtures"];
+const EXCLUDES: &[&str] = &[];
 const PATTERNS: &[&str] = &["*.css"];
 
 struct Rule {

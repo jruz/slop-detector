@@ -6,7 +6,7 @@ use ra_ap_syntax::{AstNode as _, SourceFile, SyntaxKind, ast};
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
-const EXCLUDES: &[&str] = &["fixtures"];
+const EXCLUDES: &[&str] = &[];
 const PATTERNS: &[&str] = &["*.rs"];
 const CARGO_TOML_PATTERNS: &[&str] = &["Cargo.toml"];
 

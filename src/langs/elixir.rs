@@ -3,7 +3,7 @@ use std::fs;
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
-const EXCLUDES: &[&str] = &["_build", "deps", "fixtures"];
+const EXCLUDES: &[&str] = &["_build", "deps"];
 const PATTERNS: &[&str] = &["*.ex", "*.exs"];
 
 struct Rule {

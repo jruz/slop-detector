@@ -10,7 +10,7 @@ use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
 const PATTERNS: &[&str] = &["playwright/*.spec.ts"];
-const EXCLUDES: &[&str] = &["fixtures"];
+const EXCLUDES: &[&str] = &[];
 
 struct PlaywrightVisitor<'src> {
     nested_call_arg_errors: Vec<String>,
