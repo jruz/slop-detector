@@ -1,5 +1,6 @@
 use std::fs;
 
+use hcl::expr::{Traversal, TraversalOperator};
 use hcl::{Body, Expression};
 
 use crate::files::find_files;
@@ -19,11 +20,23 @@ struct Rule {
     check: fn(body: &Body, path: &str) -> Vec<String>,
 }
 
-const RULES: &[Rule] = &[Rule {
-    name: "no-hardcoded-env",
-    hint: Some("use var.* references instead of literal values"),
-    check: check_no_hardcoded_env,
-}];
+const RULES: &[Rule] = &[
+    Rule {
+        name: "no-hardcoded-env",
+        hint: Some("use var.* references instead of literal values"),
+        check: check_no_hardcoded_env,
+    },
+    Rule {
+        name: "env-var-naming",
+        hint: Some("var references must be UPPER_SNAKE_CASE"),
+        check: check_env_var_naming,
+    },
+    Rule {
+        name: "env-var-mismatch",
+        hint: Some("env key and var name should match"),
+        check: check_env_var_mismatch,
+    },
+];
 
 fn is_literal(expr: &Expression) -> bool {
     matches!(
@@ -68,6 +81,96 @@ fn format_expr(expr: &Expression) -> String {
 
 fn check_no_hardcoded_env(body: &Body, _path: &str) -> Vec<String> {
     collect_env_violations(body)
+}
+
+fn extract_var_traversal(expression: &Expression) -> Option<(&str, &str)> {
+    let Expression::Traversal(traversal) = expression else {
+        return None;
+    };
+    let Traversal {
+        expr: inner,
+        operators,
+    } = traversal.as_ref();
+    let Expression::Variable(var) = inner else {
+        return None;
+    };
+    if var.as_str() != "var" {
+        return None;
+    }
+    let [TraversalOperator::GetAttr(ident)] = operators.as_slice() else {
+        return None;
+    };
+    Some((var.as_str(), ident.as_str()))
+}
+
+fn is_upper_snake_case(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
+}
+
+fn collect_var_naming_violations(body: &Body) -> Vec<String> {
+    let local: Vec<String> = body
+        .blocks()
+        .filter(|block| block.identifier.as_str() == "env")
+        .flat_map(|block| {
+            block.body.attributes().filter_map(|attr| {
+                let (_, var_name) = extract_var_traversal(&attr.expr)?;
+                if is_upper_snake_case(var_name) {
+                    return None;
+                }
+                Some(format!(
+                    "{} = var.{var_name} (not UPPER_SNAKE_CASE)",
+                    attr.key.as_str()
+                ))
+            })
+        })
+        .collect();
+
+    let nested: Vec<String> = body
+        .blocks()
+        .filter(|block| block.identifier.as_str() != "env")
+        .flat_map(|block| collect_var_naming_violations(&block.body))
+        .collect();
+
+    [local, nested].concat()
+}
+
+fn collect_var_mismatch_violations(body: &Body) -> Vec<String> {
+    let local: Vec<String> = body
+        .blocks()
+        .filter(|block| block.identifier.as_str() == "env")
+        .flat_map(|block| {
+            block.body.attributes().filter_map(|attr| {
+                let (_, var_name) = extract_var_traversal(&attr.expr)?;
+                let key = attr.key.as_str();
+                if !is_upper_snake_case(var_name) {
+                    return None;
+                }
+                if key == var_name {
+                    return None;
+                }
+                Some(format!("{key} = var.{var_name} (names differ)"))
+            })
+        })
+        .collect();
+
+    let nested: Vec<String> = body
+        .blocks()
+        .filter(|block| block.identifier.as_str() != "env")
+        .flat_map(|block| collect_var_mismatch_violations(&block.body))
+        .collect();
+
+    [local, nested].concat()
+}
+
+fn check_env_var_naming(body: &Body, _path: &str) -> Vec<String> {
+    collect_var_naming_violations(body)
+}
+
+fn check_env_var_mismatch(body: &Body, _path: &str) -> Vec<String> {
+    collect_var_mismatch_violations(body)
 }
 
 fn find(patterns: &[&str], excludes: &[&str]) -> (Vec<String>, Vec<AppError>) {
@@ -161,6 +264,34 @@ mod tests {
     fn no_hardcoded_env_allows_valid() {
         let body = parse_fixture("valid-no-hardcoded-env");
         let errors = check_no_hardcoded_env(&body, "test");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn env_var_naming_detects_violation() {
+        let body = parse_fixture("env-var-naming");
+        let errors = check_env_var_naming(&body, "test");
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn env_var_naming_allows_valid() {
+        let body = parse_fixture("valid-env-var-naming");
+        let errors = check_env_var_naming(&body, "test");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn env_var_mismatch_detects_violation() {
+        let body = parse_fixture("env-var-mismatch");
+        let errors = check_env_var_mismatch(&body, "test");
+        assert_eq!(errors.len(), 2);
+    }
+
+    #[test]
+    fn env_var_mismatch_allows_valid() {
+        let body = parse_fixture("valid-env-var-mismatch");
+        let errors = check_env_var_mismatch(&body, "test");
         assert!(errors.is_empty());
     }
 }
