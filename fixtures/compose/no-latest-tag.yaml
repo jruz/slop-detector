@@ -1,0 +1,13 @@
+runtime: podman
+processes:
+  postgres:
+    docker:
+      image: "docker.io/postgres:latest"
+
+  redis:
+    docker:
+      image: "docker.io/redis"
+
+  questdb:
+    docker:
+      image: "docker.io/questdb/questdb:9.3.4"

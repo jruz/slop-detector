@@ -2,6 +2,7 @@
 
 Linter for detecting AI generated slop in:
 
+- Compose
 - CSS
 - Elixir
 - Gleam
@@ -22,6 +23,7 @@ cargo install --git https://codeberg.org/jruz/slop-detector
 
 ```bash
 slop-detector          # Check all languages
+slop-detector compose
 slop-detector css
 slop-detector elixir
 slop-detector gleam
@@ -53,6 +55,10 @@ slop-detector --create-config-for-violations
 ```
 
 ## Rules
+
+### Compose
+- `no-env-passthrough` - Don't redeclare vars `--env-file` passes them automatically
+- `no-latest-tag` - Pin to an exact version tag
 
 ### CSS
 - `no-stylelint-disable` - Fix the violation instead of disabling the rule

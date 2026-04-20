@@ -1,0 +1,10 @@
+runtime: podman
+processes:
+  questdb:
+    docker:
+      image: "docker.io/questdb/questdb:9.3.4"
+    env:
+      QDB_CAIRO_SQL_COPY_ROOT: "/backup"
+      QDB_PG_NET_BIND_TO: "0.0.0.0:${QUESTDB_PG_PORT}"
+      APP_DOMAIN: server
+      PLAYWRIGHT_ARGS: "${PLAYWRIGHT_ARGS}"

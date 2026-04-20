@@ -1,3 +1,4 @@
+pub mod compose;
 pub mod css;
 pub mod elixir;
 pub mod gleam;

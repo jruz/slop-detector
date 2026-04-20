@@ -1,0 +1,9 @@
+runtime: podman
+processes:
+  questdb:
+    docker:
+      image: "docker.io/questdb/questdb:9.3.4"
+    env:
+      QDB_PG_USER: "${QDB_PG_USER}"
+      QDB_PG_PASSWORD: "${QDB_PG_PASSWORD}"
+      QDB_CAIRO_SQL_COPY_ROOT: "/backup"

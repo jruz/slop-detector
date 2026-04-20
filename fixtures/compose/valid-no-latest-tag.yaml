@@ -1,0 +1,13 @@
+runtime: podman
+processes:
+  postgres:
+    docker:
+      image: "docker.io/postgres:18.1"
+
+  questdb:
+    docker:
+      image: "docker.io/questdb/questdb:9.3.4"
+
+  bun:
+    docker:
+      image: "docker.io/oven/bun:1.3.3"

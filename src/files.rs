@@ -37,6 +37,11 @@ pub fn find_files(patterns: &[&str], excludes: &[&str]) -> Result<Vec<String>> {
                 }
             } else if let Some(ext) = pattern.strip_prefix("*.") {
                 path.extension().is_some_and(|path_ext| path_ext == ext)
+            } else if let Some((prefix, suffix)) = pattern.split_once('*') {
+                path.file_name().is_some_and(|name| {
+                    let name = name.to_string_lossy();
+                    name.starts_with(prefix) && name.ends_with(suffix)
+                })
             } else {
                 path.file_name().is_some_and(|name| name == *pattern)
             }
