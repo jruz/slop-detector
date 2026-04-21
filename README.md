@@ -8,6 +8,7 @@ Linter for detecting AI generated slop in:
 - Gleam
 - JS/TS
 - Just
+- Nix
 - Playwright
 - Rust
 - Swift
@@ -29,6 +30,7 @@ slop-detector elixir
 slop-detector gleam
 slop-detector js
 slop-detector just
+slop-detector nix
 slop-detector playwright
 slop-detector rust
 slop-detector swift
@@ -107,6 +109,10 @@ slop-detector --create-config-for-violations
 - `no-lowercase-args` - Use UPPERCASE for recipe arguments
 - `no-multi-flags` - Put valued flags (`--flag=X`) on their own line; max 2 boolean flags per line
 - `no-recipe-deps` - Call dependencies explicitly with `just <recipe>` in the body
+
+### Nix
+- `no-unstable-nixpkgs` - Pin nixpkgs to a release branch like nixos-25.11; unstable is fine as a separate input
+- `no-manual-for-all-systems` - Use flake-utils instead of manually defining forAllSystems with genAttrs
 
 ### Playwright
 - `no-nested-call-args` - Bind inner call results to consts before passing them

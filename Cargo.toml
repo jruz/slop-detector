@@ -17,6 +17,8 @@ lightningcss = "1.0.0-alpha.70"
 oxc = "0.110.0"
 oxc_ast_visit = "0.110.0"
 ra_ap_syntax = "0.0.316"
+rnix = "0.14.0"
+rowan = "0.16.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 thiserror = "2.0.18"

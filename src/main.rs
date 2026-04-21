@@ -12,7 +12,7 @@ use clap::{Parser, ValueEnum};
 use color_eyre::Result;
 
 use config::{filter_violations, load_config};
-use langs::{compose, css, elixir, gleam, js, just, nomad, playwright, rust, swift, tofu};
+use langs::{compose, css, elixir, gleam, js, just, nix, nomad, playwright, rust, swift, tofu};
 use output::{format_violations, generate_config_toml};
 use types::Violation;
 
@@ -25,6 +25,7 @@ enum Command {
     Gleam,
     Js,
     Just,
+    Nix,
     Nomad,
     Playwright,
     Rust,
@@ -40,6 +41,7 @@ enum SingleCommand {
     Gleam,
     Js,
     Just,
+    Nix,
     Nomad,
     Playwright,
     Rust,
@@ -54,6 +56,7 @@ const ALL_COMMANDS: &[SingleCommand] = &[
     SingleCommand::Gleam,
     SingleCommand::Js,
     SingleCommand::Just,
+    SingleCommand::Nix,
     SingleCommand::Nomad,
     SingleCommand::Playwright,
     SingleCommand::Rust,
@@ -69,6 +72,7 @@ fn run_check(cmd: SingleCommand) -> types::CheckResult {
         SingleCommand::Gleam => gleam::check(),
         SingleCommand::Js => js::check(),
         SingleCommand::Just => just::check(),
+        SingleCommand::Nix => nix::check(),
         SingleCommand::Nomad => nomad::check(),
         SingleCommand::Playwright => playwright::check(),
         SingleCommand::Rust => rust::check(),
@@ -81,7 +85,7 @@ fn run_check(cmd: SingleCommand) -> types::CheckResult {
 #[command(name = "slop-detector")]
 #[command(version = version::clap_version())]
 #[command(
-    about = "Linter for detecting anti-patterns in Compose, CSS, Elixir, Gleam, JS/TS, Just, Nomad, Playwright, Rust, Swift, and OpenTofu code"
+    about = "Linter for detecting anti-patterns in Compose, CSS, Elixir, Gleam, JS/TS, Just, Nix, Nomad, Playwright, Rust, Swift, and OpenTofu code"
 )]
 struct Args {
     #[arg(value_enum, default_value = "all")]
@@ -112,6 +116,7 @@ fn main() -> Result<ExitCode> {
         Command::Gleam => &[SingleCommand::Gleam],
         Command::Js => &[SingleCommand::Js],
         Command::Just => &[SingleCommand::Just],
+        Command::Nix => &[SingleCommand::Nix],
         Command::Nomad => &[SingleCommand::Nomad],
         Command::Playwright => &[SingleCommand::Playwright],
         Command::Rust => &[SingleCommand::Rust],
