@@ -143,6 +143,7 @@ slop-detector --create-config-for-violations
 - `no-nested-call-args` - Bind inner call results to locals before passing them
 - `no-ok-and-propagate` - Use ? on Result directly, not .ok()?
 - `no-ok-method` - Handle error explicitly, don't discard with .ok()
+- `no-postgres-query-outside-models` - Keep tokio-postgres / deadpool-postgres query calls (`simple_query`, `query`, `query_one`, `query_opt`, `query_raw`) inside `models/`
 - `no-print-outside-main` - Keep print statements in main()
 - `no-pub-crate-fn` - Use pub instead of pub(crate) in single-crate projects
 - `no-return-ok` - Don't hide errors with return Ok(())

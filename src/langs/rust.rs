@@ -125,6 +125,11 @@ const RULES: &[Rule] = &[
         name: "no-ok-method",
     },
     Rule {
+        check: check_no_postgres_query_outside_models,
+        hint: Some("keep postgres query construction inside models/"),
+        name: "no-postgres-query-outside-models",
+    },
+    Rule {
         check: check_no_print_outside_main,
         hint: Some("print statements should only be in main()"),
         name: "no-print-outside-main",
@@ -1493,6 +1498,54 @@ fn check_no_spawn(source: &str, ast: &SourceFile, _path: &str) -> Vec<String> {
     check_method_call(source, ast, "spawn")
 }
 
+const POSTGRES_QUERY_METHODS: &[&str] = &[
+    "simple_query",
+    "query",
+    "query_one",
+    "query_opt",
+    "query_raw",
+];
+
+const POSTGRES_CRATE_MARKERS: &[&str] = &["tokio_postgres", "deadpool_postgres"];
+
+fn file_uses_postgres(source: &str) -> bool {
+    POSTGRES_CRATE_MARKERS
+        .iter()
+        .any(|marker| source.contains(marker))
+}
+
+fn check_no_postgres_query_outside_models(
+    source: &str,
+    ast: &SourceFile,
+    path: &str,
+) -> Vec<String> {
+    if is_in_models_dir(path) {
+        return vec![];
+    }
+    if !file_uses_postgres(source) {
+        return vec![];
+    }
+    ast.syntax()
+        .descendants()
+        .filter_map(|node| {
+            if node.kind() != SyntaxKind::METHOD_CALL_EXPR {
+                return None;
+            }
+            let cloned = node.clone();
+            let method_call = ast::MethodCallExpr::cast(cloned)?;
+            let method_name = method_call.name_ref()?.text().to_string();
+            let name_str = method_name.as_str();
+            if !POSTGRES_QUERY_METHODS.contains(&name_str) {
+                return None;
+            }
+            let start = node.text_range().start();
+            let offset: usize = start.into();
+            let line = line_number(source, offset);
+            Some(format!("line {line}: .{method_name}()"))
+        })
+        .collect()
+}
+
 fn check_no_sqlx_query_outside_models(source: &str, ast: &SourceFile, path: &str) -> Vec<String> {
     if is_in_models_dir(path) {
         return vec![];
@@ -2104,6 +2157,29 @@ mod tests {
     fn no_spawn_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-spawn");
         let errors = check_no_spawn(&source, &ast, "src/main.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_postgres_query_outside_models_detects_violation() {
+        let (source, ast) = parse_fixture("no-postgres-query-outside-models");
+        let errors =
+            check_no_postgres_query_outside_models(&source, &ast, "src/tasks/questdb_backup.rs");
+        assert_eq!(errors.len(), 5);
+    }
+
+    #[test]
+    fn no_postgres_query_outside_models_allows_models_dir() {
+        let (source, ast) = parse_fixture("no-postgres-query-outside-models");
+        let errors = check_no_postgres_query_outside_models(&source, &ast, "src/models/foo.rs");
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn no_postgres_query_outside_models_skips_files_without_postgres_markers() {
+        let (source, ast) = parse_fixture("valid-no-postgres-query-outside-models");
+        let errors =
+            check_no_postgres_query_outside_models(&source, &ast, "src/tasks/questdb_backup.rs");
         assert!(errors.is_empty());
     }
 
