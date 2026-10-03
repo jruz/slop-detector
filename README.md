@@ -1,6 +1,10 @@
 # Slop Detector
 
-Linter for detecting AI generated slop in:
+An opinionated linter for catching slop and enforcing my coding standards. I use it in my own projects through an agent’s stop hook; its rules reflect my preferences, not a universal coding standard.
+
+It checks the code, not whether a human or an AI wrote it.
+
+Supported languages:
 
 - Compose
 - CSS
@@ -176,6 +180,10 @@ slop-detector --create-config-for-violations
 - `banned-provider` - No external provider
 - `banned-provisioner` - No local-exec/remote-exec
 - `banned-resource` - No terraform_data
+
+## AI disclaimer
+
+This project was built with AI assistance (Claude Code, Codex, GLM). These tools assist under my direction; this project is not vibe coded. All code follows my own strict quality standards, enforced through hooks (including this linter), skills, and my manual review. The architecture and design are my own.
 
 ## License
 
