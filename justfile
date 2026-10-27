@@ -64,18 +64,13 @@ rust-upgrade:
     sandbox cargo upgrade --incompatible
     sandbox cargo update
 
+[working-directory: 'scripts']
 nu-check:
     #!/usr/bin/env nu
     (^fd
         --absolute-path
         --extension nu
         --exec nu --commands 'nu-check --debug {}')
-    nu-lint --config nu-lint.toml
-
-nu-fix:
-    nu-lint \
-        --config nu-lint.toml \
-        --fix
 
 nix-check:
     fd \
@@ -180,7 +175,19 @@ ci-check:
 # ---------------- INSTALL
 
 install:
-    sandbox cargo install --path . --force
+    sandbox cargo install \
+        --path . \
+        --locked \
+        --force \
+        --root target/dist
+    install \
+        --directory \
+        --mode=755 \
+        "$HOME/.cargo/bin"
+    install \
+        --mode=755 \
+        target/dist/bin/* \
+        "$HOME/.cargo/bin"
 
 # ---------------- RELEASE
 

@@ -1,21 +1,11 @@
 {
-  description = "Linter for detecting AI generated slop";
-
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-25.11";
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-26.05";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     flake-utils.url = "github:numtide/flake-utils";
-    nu-lint = {
-      url = "git+https://codeberg.org/wvhulle/nu-lint?ref=refs/tags/v0.1.1";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        flake-utils.follows = "flake-utils";
-        rust-overlay.follows = "rust-overlay";
-      };
-    };
   };
 
   outputs =
@@ -24,51 +14,48 @@
       nixpkgs,
       rust-overlay,
       flake-utils,
-      nu-lint,
       ...
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ rust-overlay.overlays.default ];
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs { inherit system overlays; };
+        rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = rust;
+          rustc = rust;
         };
-        cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
         rustToolchain = builtins.fromTOML (builtins.readFile ./rust-toolchain.toml);
         rustVersion = rustToolchain.toolchain.channel;
-        rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-        nu-lint-package = nu-lint.packages.${system}.default;
+        cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
         revision = self.rev or "dirty";
-        sandboxPath = pkgs.lib.makeBinPath [
-          rust
-          pkgs.bash
-          pkgs.bun
-          pkgs.cargo-edit
-          pkgs.cargo-nextest
-          pkgs.cargo-outdated
-          pkgs.cargo-watch
-          pkgs.coreutils
-          pkgs.docker-client
-          pkgs.fd
-          pkgs.findutils
-          pkgs.git
-          pkgs.gnugrep
-          pkgs.just
-          pkgs.nushell
-          pkgs.ripgrep
-          pkgs.taplo
-          pkgs.zip
-          pkgs.stdenv.cc
-        ];
+        sandboxPath = pkgs.lib.makeBinPath (
+          with pkgs;
+          [
+            rust
+            bash
+            bun
+            cargo-edit
+            cargo-machete
+            cargo-nextest
+            cargo-outdated
+            cargo-watch
+            coreutils
+            findutils
+            git
+            gnugrep
+            gnused
+            just
+            mold
+            nushell
+            stdenv.cc
+          ]
+        );
         sandbox = pkgs.writeShellScriptBin "sandbox" ''
           SELF_DIR="$(dirname "$(readlink -f "$0")")"
-          SANDBOX_CMD="''${@:-$SHELL}"
           ARGS=(
-            --unshare-user
-            --unshare-ipc
-            --unshare-uts
-            --unshare-cgroup
+            --unshare-all
             --share-net
             --die-with-parent
             --ro-bind /nix /nix
@@ -80,48 +67,43 @@
             --symlink ${pkgs.coreutils}/bin/env /usr/bin/env
             --symlink ${pkgs.bash}/bin/bash /bin/sh
             --tmpfs "$HOME"
+            --tmpfs /tmp
             --bind "$(pwd)" "$(pwd)"
-            --bind /tmp /tmp
-            --ro-bind "$(git rev-parse --git-common-dir)" "$(git rev-parse --git-common-dir)"
+            --ro-bind "$(git rev-parse --path-format=absolute --git-common-dir)" "$(git rev-parse --path-format=absolute --git-common-dir)"
             --ro-bind-try "$HOME/.gitconfig" "$HOME/.gitconfig"
             --ro-bind-try "$HOME/.ssh/known_hosts" "$HOME/.ssh/known_hosts"
             --setenv PATH "${sandboxPath}:$SELF_DIR"
             --setenv HOME "$HOME"
-            --setenv REVISION "''${REVISION:-dev}"
+            --setenv TMPDIR /tmp
             --dev /dev
             --proc /proc
           )
           ARGS+=(
-            --bind-try "$HOME/.cargo" "$HOME/.cargo"
-            --bind-try "$HOME/.bun" "$HOME/.bun"
+            --bind-try "$HOME/.cargo/registry" "$HOME/.cargo/registry"
+            --bind-try "$HOME/.cargo/git" "$HOME/.cargo/git"
+            --bind-try "$HOME/.bun/install/cache" "$HOME/.bun/install/cache"
           )
-          exec ${pkgs.bubblewrap}/bin/bwrap "''${ARGS[@]}" -- $SANDBOX_CMD
+          exec ${pkgs.bubblewrap}/bin/bwrap "''${ARGS[@]}" -- "$@"
         '';
-        commonPackages = with pkgs; [
-          deadnix
-          fd
-          just
-          nixfmt
-          nu-lint-package
-          nushell
-          ripgrep
-          sandbox
-          statix
-          taplo
-          woodpecker-cli
-        ];
-        darwinPackages = with pkgs; [
-          libiconv
-        ];
-        linuxPackages = with pkgs; [
-          glibc
-          glibcLocales
-        ];
-        platformPackages =
-          if pkgs.stdenv.isDarwin then commonPackages ++ darwinPackages else commonPackages ++ linuxPackages;
+        defaultPackages =
+          with pkgs;
+          [
+            deadnix
+            fd
+            just
+            nixfmt
+            nushell
+            sandbox
+            statix
+            woodpecker-cli
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+            glibc
+            glibcLocales
+          ];
       in
       {
-        packages.default = pkgs.rustPlatform.buildRustPackage {
+        packages.default = rustPlatform.buildRustPackage {
           pname = cargoToml.package.name;
           inherit (cargoToml.package) version;
           src = ./.;
@@ -129,19 +111,20 @@
           REVISION = revision;
           CARGO_HOME = "$TMPDIR";
           doCheck = false;
+          nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.mold ];
           buildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
         };
 
         devShells.default = pkgs.mkShell {
-          buildInputs = platformPackages;
+          packages = defaultPackages;
 
           shellHook = ''
             echo ""
             echo "  ${cargoToml.package.name} Development Shell"
             echo "  ───────────────────────────"
-            echo "  Rust:        ${rustVersion} (sandbox)"
-            echo "  Bun:         ${pkgs.bun.version} (sandbox)"
-            echo "  Woodpecker:  ${pkgs.woodpecker-cli.version} (sandbox)"
+            echo "  nixpkgs      ${pkgs.lib.trivial.release}"
+            echo "  rust         ${rustVersion} (sandbox)"
+            echo "  bun          ${pkgs.bun.version} (sandbox)"
             echo ""
           ''
           + pkgs.lib.optionalString pkgs.stdenv.isLinux ''
