@@ -1,4 +1,4 @@
-import { log } from "./log";
+import { log } from "./lib/log.ts";
 
 const parseId = (data: unknown): number => {
   if (typeof data !== "object" || data === null || !("id" in data))

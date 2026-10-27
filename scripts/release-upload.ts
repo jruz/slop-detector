@@ -1,4 +1,4 @@
-import { log } from "./log";
+import { log } from "./lib/log.ts";
 import { Glob } from "bun";
 
 const parseId = (data: unknown): number => {
