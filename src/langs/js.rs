@@ -664,7 +664,7 @@ mod tests {
     fn no_eslint_disable_allows_valid() {
         let source = read_fixture("valid-no-eslint-disable.ts");
         let errors = check_no_eslint_disable(&source);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -706,7 +706,7 @@ mod tests {
         let content = read_fixture("valid-exact-versions.json");
         let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
         let errors = check_exact_versions(&pkg);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -735,7 +735,7 @@ mod tests {
         let content = read_fixture("valid-no-scripts.json");
         let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
         let errors = check_no_scripts_section(&pkg);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]

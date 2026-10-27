@@ -264,7 +264,7 @@ mod tests {
     fn no_hardcoded_env_allows_valid() {
         let body = parse_fixture("valid-no-hardcoded-env");
         let errors = check_no_hardcoded_env(&body, "test");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -278,7 +278,7 @@ mod tests {
     fn env_var_naming_allows_valid() {
         let body = parse_fixture("valid-env-var-naming");
         let errors = check_env_var_naming(&body, "test");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -292,6 +292,6 @@ mod tests {
     fn env_var_mismatch_allows_valid() {
         let body = parse_fixture("valid-env-var-mismatch");
         let errors = check_env_var_mismatch(&body, "test");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 }

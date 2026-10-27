@@ -1800,7 +1800,7 @@ mod tests {
     fn pinned_versions_allows_valid() {
         let toml = read_toml_fixture("valid-pinned-versions");
         let errors = check_pinned_versions(&toml);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1814,7 +1814,7 @@ mod tests {
     fn no_allow_attr_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-allow-attr");
         let errors = check_no_allow_attr(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1828,7 +1828,7 @@ mod tests {
     fn no_catch_unwind_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-catch-unwind");
         let errors = check_no_catch_unwind(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1842,7 +1842,7 @@ mod tests {
     fn no_cfg_attr_suppress_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-attrs");
         let errors = check_no_cfg_attr_suppress(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1856,7 +1856,7 @@ mod tests {
     fn no_discard_result_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-discard-result");
         let errors = check_no_discard_result(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1870,7 +1870,7 @@ mod tests {
     fn no_discard_try_value_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-discard-try-value");
         let errors = check_no_discard_try_value(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1884,7 +1884,7 @@ mod tests {
     fn no_drop_result_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-drop-result");
         let errors = check_no_drop_result(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1898,21 +1898,21 @@ mod tests {
     fn no_direct_env_access_allows_config_file() {
         let (source, ast) = parse_fixture("valid-no-direct-env-access");
         let errors = check_no_direct_env_access(&source, &ast, "src/config.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
     fn no_direct_env_access_allows_env_file() {
         let (source, ast) = parse_fixture("valid-no-direct-env-access");
         let errors = check_no_direct_env_access(&source, &ast, "src/env.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
     fn no_direct_env_access_allows_build_file() {
         let (source, ast) = parse_fixture("valid-no-direct-env-access");
         let errors = check_no_direct_env_access(&source, &ast, "build.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1926,7 +1926,7 @@ mod tests {
     fn no_expect_attr_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-attrs");
         let errors = check_no_expect_attr(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1940,7 +1940,7 @@ mod tests {
     fn no_nested_call_args_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-nested-call-args");
         let errors = check_no_nested_call_args(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1954,14 +1954,14 @@ mod tests {
     fn no_expect_outside_tests_allows_valid() {
         let (source, ast) = parse_fixture("valid-expect-in-tests");
         let errors = check_no_expect_outside_tests(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
     fn no_expect_outside_tests_allows_integration_tests() {
         let (source, ast) = parse_fixture("no-expect-outside-tests");
         let errors = check_no_expect_outside_tests(&source, &ast, "tests/integration.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1975,7 +1975,7 @@ mod tests {
     fn no_if_let_ok_without_else_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-if-let-ok-without-else");
         let errors = check_no_if_let_ok_without_else(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1989,7 +1989,7 @@ mod tests {
     fn no_let_ok_else_continue_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-let-ok-else-continue");
         let errors = check_no_let_ok_else_continue(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2003,7 +2003,7 @@ mod tests {
     fn no_ignore_test_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-ignore-test");
         let errors = check_no_ignore_test(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2024,7 +2024,7 @@ mod tests {
     fn no_is_ok_is_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-is-ok-is-err");
         let errors = check_no_is_ok_is_err(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2038,7 +2038,7 @@ mod tests {
     fn no_map_discard_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-map-discard");
         let errors = check_no_map_discard(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2052,7 +2052,7 @@ mod tests {
     fn no_map_err_discard_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-map-err-discard");
         let errors = check_no_map_err_discard(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2066,7 +2066,7 @@ mod tests {
     fn no_map_or_else_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-map-or-else");
         let errors = check_no_map_or_else(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2080,7 +2080,7 @@ mod tests {
     fn no_mem_forget_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-mem-forget");
         let errors = check_no_mem_forget(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2094,7 +2094,7 @@ mod tests {
     fn no_ok_and_propagate_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-ok-and-propagate");
         let errors = check_no_ok_and_propagate(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2108,7 +2108,7 @@ mod tests {
     fn no_ok_method_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-ok-method");
         let errors = check_no_ok_method(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2129,7 +2129,7 @@ mod tests {
     fn no_print_outside_main_allows_valid() {
         let (source, ast) = parse_fixture("valid-print-in-main");
         let errors = check_no_print_outside_main(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2143,7 +2143,7 @@ mod tests {
     fn no_return_ok_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-return-ok");
         let errors = check_no_return_ok(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2157,7 +2157,7 @@ mod tests {
     fn no_spawn_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-spawn");
         let errors = check_no_spawn(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2172,7 +2172,7 @@ mod tests {
     fn no_postgres_query_outside_models_allows_models_dir() {
         let (source, ast) = parse_fixture("no-postgres-query-outside-models");
         let errors = check_no_postgres_query_outside_models(&source, &ast, "src/models/foo.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2180,7 +2180,7 @@ mod tests {
         let (source, ast) = parse_fixture("valid-no-postgres-query-outside-models");
         let errors =
             check_no_postgres_query_outside_models(&source, &ast, "src/tasks/questdb_backup.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2194,7 +2194,7 @@ mod tests {
     fn no_sqlx_query_outside_models_allows_models_dir() {
         let (source, ast) = parse_fixture("no-sqlx-query-outside-models");
         let errors = check_no_sqlx_query_outside_models(&source, &ast, "src/models/user.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2208,7 +2208,7 @@ mod tests {
     fn no_sqlx_query_outside_models_allows_non_query_sqlx_usage() {
         let (source, ast) = parse_fixture("valid-no-sqlx-query-outside-models");
         let errors = check_no_sqlx_query_outside_models(&source, &ast, "src/server/health.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2224,7 +2224,7 @@ mod tests {
         let (source, ast) = parse_fixture("valid-no-sqlx-query-without-tracing-instrument");
         let errors =
             check_no_sqlx_query_without_tracing_instrument(&source, &ast, "src/models/user.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2238,7 +2238,7 @@ mod tests {
     fn no_sqlx_query_without_skip_pool_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-sqlx-query-without-skip-pool");
         let errors = check_no_sqlx_query_without_skip_pool(&source, &ast, "src/models/user.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2252,7 +2252,7 @@ mod tests {
     fn no_stderr_null_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-stderr-null");
         let errors = check_no_stderr_null(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2266,7 +2266,7 @@ mod tests {
     fn no_unwrap_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
         let errors = check_no_unwrap_err(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2280,7 +2280,7 @@ mod tests {
     fn no_unwrap_or_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
         let errors = check_no_unwrap_or(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2294,7 +2294,7 @@ mod tests {
     fn no_unwrap_or_default_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
         let errors = check_no_unwrap_or_default(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2308,7 +2308,7 @@ mod tests {
     fn no_unwrap_or_else_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
         let errors = check_no_unwrap_or_else(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2322,7 +2322,7 @@ mod tests {
     fn no_unwrap_unchecked_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unwrap-methods");
         let errors = check_no_unwrap_unchecked(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2336,7 +2336,7 @@ mod tests {
     fn no_unit_error_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-unit-error");
         let errors = check_no_unit_error(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2350,7 +2350,7 @@ mod tests {
     fn no_while_let_ok_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-while-let-ok");
         let errors = check_no_while_let_ok(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2364,7 +2364,7 @@ mod tests {
     fn no_swallowed_err_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-swallowed-err");
         let errors = check_no_swallowed_err(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2378,7 +2378,7 @@ mod tests {
     fn no_inline_style_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-inline-style");
         let errors = check_no_inline_style(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2392,7 +2392,7 @@ mod tests {
     fn no_pub_crate_fn_allows_valid() {
         let (source, ast) = parse_fixture("valid-no-pub-crate-fn");
         let errors = check_no_pub_crate_fn(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -2406,6 +2406,6 @@ mod tests {
     fn thiserror_unused_fields_allows_valid() {
         let (source, ast) = parse_fixture("valid-thiserror-unused-fields");
         let errors = check_thiserror_unused_fields(&source, &ast, "src/main.rs");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 }

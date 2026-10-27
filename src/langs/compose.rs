@@ -162,7 +162,7 @@ mod tests {
     fn no_env_passthrough_allows_valid() {
         let source = read_fixture("valid-no-env-passthrough");
         let errors = check_no_env_passthrough(&source);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -176,6 +176,6 @@ mod tests {
     fn no_latest_tag_allows_valid() {
         let source = read_fixture("valid-no-latest-tag");
         let errors = check_no_latest_tag(&source);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 }

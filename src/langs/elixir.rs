@@ -289,7 +289,7 @@ mod tests {
     fn no_inline_style_allows_valid() {
         let source = read_fixture("valid-no-inline-style", "ex");
         let errors = check_no_inline_style(&source);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -303,7 +303,7 @@ mod tests {
     fn no_nested_call_args_allows_valid() {
         let source = read_fixture("valid-no-nested-call-args", "ex");
         let errors = check_no_nested_call_args(&source);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -317,7 +317,7 @@ mod tests {
     fn pinned_dep_versions_allows_valid() {
         let source = read_fixture("valid-pinned-versions", "exs");
         let errors = check_pinned_dep_versions(&source);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -331,6 +331,6 @@ mod tests {
     fn pinned_elixir_version_allows_valid() {
         let source = read_fixture("valid-pinned-versions", "exs");
         let errors = check_pinned_elixir_version(&source);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 }

@@ -128,6 +128,6 @@ mod tests {
     fn no_stylelint_disable_allows_valid() {
         let (source, stylesheet) = parse_fixture("valid-no-stylelint-disable");
         let errors = check_no_stylelint_disable(&source, &stylesheet);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 }

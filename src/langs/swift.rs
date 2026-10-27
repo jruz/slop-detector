@@ -370,7 +370,7 @@ mod tests {
     fn no_guard_return_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-guard-return.swift");
         let errors = check_no_guard_return(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -384,7 +384,7 @@ mod tests {
     fn no_silent_catch_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-silent-catch.swift");
         let errors = check_no_silent_catch(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -398,7 +398,7 @@ mod tests {
     fn no_silent_if_let_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-silent-if-let.swift");
         let errors = check_no_silent_if_let(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -412,7 +412,7 @@ mod tests {
     fn no_try_question_mark_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-try-question-mark.swift");
         let errors = check_no_try_question_mark(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -426,6 +426,6 @@ mod tests {
     fn no_nested_call_args_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-nested-call-args.swift");
         let errors = check_no_nested_call_args(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 }

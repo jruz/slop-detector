@@ -257,7 +257,7 @@ mod tests {
     fn no_unstable_nixpkgs_allows_valid() {
         let (source, root) = parse_fixture("valid-no-unstable-nixpkgs");
         let errors = check_no_unstable_nixpkgs(&source, &root);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -271,6 +271,6 @@ mod tests {
     fn no_manual_for_all_systems_allows_valid() {
         let (source, root) = parse_fixture("valid-no-manual-for-all-systems");
         let errors = check_no_manual_for_all_systems(&source, &root);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 }

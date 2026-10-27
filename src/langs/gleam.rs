@@ -1123,7 +1123,7 @@ mod tests {
     fn no_discarded_error_fields_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-discarded-error-fields.gleam");
         let errors = check_no_discarded_error_fields(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1137,7 +1137,7 @@ mod tests {
     fn no_discarded_ok_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-discarded-ok.gleam");
         let errors = check_no_discarded_ok(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1153,7 +1153,7 @@ mod tests {
         let content = read_fixture("valid-versions.toml");
         let toml: toml::Value = toml::from_str(&content).expect("valid toml");
         let errors = check_exact_versions(&toml, "test");
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1167,7 +1167,7 @@ mod tests {
     fn no_error_passthrough_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-error-passthrough.gleam");
         let errors = check_no_error_passthrough(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1181,7 +1181,7 @@ mod tests {
     fn no_ignored_error_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-ignored-error.gleam");
         let errors = check_no_ignored_error(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1195,7 +1195,7 @@ mod tests {
     fn no_let_assert_outside_main_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-let-assert-outside-main.gleam");
         let errors = check_no_let_assert_outside_main(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1209,7 +1209,7 @@ mod tests {
     fn no_nested_if_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-nested-if.gleam");
         let errors = check_no_nested_if(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1223,7 +1223,7 @@ mod tests {
     fn no_map_error_discard_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-map-error-discard.gleam");
         let errors = check_no_map_error_discard(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1237,7 +1237,7 @@ mod tests {
     fn no_nested_call_args_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-nested-call-args.gleam");
         let errors = check_no_nested_call_args(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1251,7 +1251,7 @@ mod tests {
     fn no_nested_option_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-nested-option.gleam");
         let errors = check_no_nested_option(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1265,7 +1265,7 @@ mod tests {
     fn no_nested_result_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-nested-result.gleam");
         let errors = check_no_nested_result(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -1279,6 +1279,6 @@ mod tests {
     fn no_unwrap_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-unwrap.gleam");
         let errors = check_no_unwrap(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 }

@@ -589,7 +589,7 @@ mod tests {
     fn no_bunx_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-bunx");
         let errors = check_no_bunx(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -603,7 +603,7 @@ mod tests {
     fn no_bash_shebang_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-bash-shebang");
         let errors = check_no_bash_shebang(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -617,7 +617,7 @@ mod tests {
     fn no_external_without_caret_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-external-without-caret");
         let errors = check_no_external_without_caret(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -631,7 +631,7 @@ mod tests {
     fn no_recipe_deps_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-recipe-deps");
         let errors = check_no_recipe_deps(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -645,7 +645,7 @@ mod tests {
     fn no_long_lines_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-long-lines");
         let errors = check_no_long_lines(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -659,7 +659,7 @@ mod tests {
     fn no_lowercase_args_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-lowercase-args");
         let errors = check_no_lowercase_args(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]
@@ -673,6 +673,6 @@ mod tests {
     fn no_multi_flags_allows_valid() {
         let (source, tree) = parse_fixture("valid-no-multi-flags");
         let errors = check_no_multi_flags(&source, &tree);
-        assert!(errors.is_empty());
+        assert_eq!(errors, Vec::<String>::new());
     }
 }
