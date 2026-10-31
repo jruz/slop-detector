@@ -328,7 +328,9 @@ impl<'src> Visit<'src> for TsVisitor<'src> {
                 .push(format!("line {line}: nested call argument"));
         }
 
-        let is_logging_file = self.path.ends_with("/log.ts") || self.path.ends_with("/tracing.ts");
+        let is_logging_file = self.path.ends_with("/log.ts")
+            || self.path.ends_with("/tracing.ts")
+            || self.path.ends_with("/output.ts");
         if callee_text.starts_with("console.") && !self.inside_main && !is_logging_file {
             let line = line_number(self.source, expr.span.start);
             self.console_errors
@@ -480,7 +482,7 @@ fn collect_violations(visitor: TsVisitor<'_>) -> Vec<Violation> {
         (
             "no-console",
             visitor.console_errors,
-            Some("use log.ts or tracing.ts"),
+            Some("use log.ts, tracing.ts or output.ts"),
         ),
         (
             "no-stderr-write",
@@ -737,6 +739,12 @@ mod tests {
     #[test]
     fn no_console_allows_log_ts() {
         let violations = parse_ts_fixture_as("no-console", "src/log.ts");
+        assert!(!has_violation(&violations, "no-console"));
+    }
+
+    #[test]
+    fn no_console_allows_output_ts() {
+        let violations = parse_ts_fixture_as("no-console", "src/output.ts");
         assert!(!has_violation(&violations, "no-console"));
     }
 
