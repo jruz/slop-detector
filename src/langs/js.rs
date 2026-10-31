@@ -44,29 +44,15 @@ struct PackageJsonRule {
     name: &'static str,
 }
 
-const PACKAGE_JSON_RULES: &[PackageJsonRule] = &[
-    PackageJsonRule {
-        check: check_no_scripts_section,
-        hint: None,
-        name: "no-scripts-section",
-    },
-    PackageJsonRule {
-        check: check_exact_versions,
-        hint: None,
-        name: "exact-versions",
-    },
-];
+const PACKAGE_JSON_RULES: &[PackageJsonRule] = &[PackageJsonRule {
+    check: check_exact_versions,
+    hint: None,
+    name: "exact-versions",
+}];
 
 struct ParsedPackageJson {
     path: String,
     pkg: serde_json::Value,
-}
-
-fn check_no_scripts_section(pkg: &serde_json::Value) -> Vec<String> {
-    match pkg.get("scripts").and_then(|scripts| scripts.as_object()) {
-        Some(obj) if !obj.is_empty() => vec!["contains a scripts section".to_string()],
-        _ => vec![],
-    }
 }
 
 fn check_exact_versions(pkg: &serde_json::Value) -> Vec<String> {
@@ -720,22 +706,6 @@ mod tests {
     fn no_throwing_fn_without_try_allows_valid() {
         let violations = parse_ts_fixture("valid-throwing-fn-without-try");
         assert!(!has_violation(&violations, "no-throwing-fn-without-try"));
-    }
-
-    #[test]
-    fn no_scripts_section_detects_violation() {
-        let content = read_fixture("no-scripts-section.json");
-        let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
-        let errors = check_no_scripts_section(&pkg);
-        assert_eq!(errors.len(), 1);
-    }
-
-    #[test]
-    fn no_scripts_section_allows_valid() {
-        let content = read_fixture("valid-no-scripts.json");
-        let pkg: serde_json::Value = serde_json::from_str(&content).expect("valid json");
-        let errors = check_no_scripts_section(&pkg);
-        assert_eq!(errors, Vec::<String>::new());
     }
 
     #[test]

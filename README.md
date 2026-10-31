@@ -99,7 +99,6 @@ slop-detector --create-config-for-violations
 - `no-nested-call-args` - Bind inner call results to consts before passing them
 - `no-throwing-fn-without-try` - Wrap throwing functions in try/catch
 - `no-interface` - Use type instead of interface
-- `no-scripts-section` - No scripts in package.json
 - `no-defaults` - Avoid `x ?? fallback`, `x || fallback` with literal defaults
 - `no-eslint-disable` - Fix the violation instead of disabling the rule
 - `no-satisfies` - Declare the type instead
