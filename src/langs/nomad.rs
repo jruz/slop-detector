@@ -22,6 +22,11 @@ struct Rule {
 
 const RULES: &[Rule] = &[
     Rule {
+        name: "pinned-image-versions",
+        hint: Some("pin image tags to x.x.x or vx.x.x, optionally followed by a suffix"),
+        check: check_pinned_image_versions,
+    },
+    Rule {
         name: "no-hardcoded-env",
         hint: Some("use var.* references instead of literal values"),
         check: check_no_hardcoded_env,
@@ -37,6 +42,75 @@ const RULES: &[Rule] = &[
         check: check_env_var_mismatch,
     },
 ];
+
+fn has_full_version(tag: &str) -> bool {
+    let version = tag.strip_prefix('v').map_or(tag, |version| version);
+    let mut parts = version.splitn(3, '.');
+    let Some(major) = parts.next() else {
+        return false;
+    };
+    let Some(minor) = parts.next() else {
+        return false;
+    };
+    let Some(patch_and_suffix) = parts.next() else {
+        return false;
+    };
+    let Some(patch) = patch_and_suffix.split(['-', '_', '.']).next() else {
+        return false;
+    };
+
+    [major, minor, patch]
+        .iter()
+        .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
+fn image_version_violation(expr: &Expression) -> Option<String> {
+    let Expression::String(image) = expr else {
+        return None;
+    };
+    if image.contains("${") || image.contains("%{") {
+        return None;
+    }
+    let reference = match image.split_once('@') {
+        Some((reference, _)) => reference,
+        None => image,
+    };
+    let name = match reference.rsplit_once('/') {
+        Some((_, name)) => name,
+        None => reference,
+    };
+    if let Some((_, tag)) = name.split_once(':')
+        && has_full_version(tag)
+    {
+        return None;
+    }
+    Some(format!("{image} is not pinned to a full version"))
+}
+
+fn collect_image_version_violations(body: &Body) -> Vec<String> {
+    body.blocks()
+        .flat_map(|block| {
+            if block.identifier.as_str() != "task" {
+                return collect_image_version_violations(&block.body);
+            }
+            block
+                .body
+                .blocks()
+                .filter(|config| config.identifier.as_str() == "config")
+                .flat_map(|config| config.body.attributes())
+                .filter(|attr| attr.key.as_str() == "image")
+                .filter_map(|attr| image_version_violation(&attr.expr))
+                .collect()
+        })
+        .collect()
+}
+
+fn check_pinned_image_versions(body: &Body, _path: &str) -> Vec<String> {
+    body.blocks()
+        .filter(|block| block.identifier.as_str() == "job")
+        .flat_map(|job| collect_image_version_violations(&job.body))
+        .collect()
+}
 
 fn is_literal(expr: &Expression) -> bool {
     matches!(
@@ -251,6 +325,51 @@ mod tests {
         let path = format!("fixtures/nomad/{name}.hcl");
         let content = fs::read_to_string(&path).expect("fixture should exist");
         hcl::from_str(&content).expect("valid hcl")
+    }
+
+    #[test]
+    fn pinned_image_versions_detects_violation() {
+        let body = parse_fixture("pinned-image-versions");
+        let errors = check_pinned_image_versions(&body, "test");
+        assert_eq!(errors.len(), 9);
+    }
+
+    #[test]
+    fn pinned_image_versions_allows_valid() {
+        let body = parse_fixture("valid-pinned-image-versions");
+        let errors = check_pinned_image_versions(&body, "test");
+        assert_eq!(errors, Vec::<String>::new());
+    }
+
+    #[test]
+    fn image_versions_reject_incomplete_or_malformed_tags() {
+        for tag in [
+            "",
+            "latest",
+            "1",
+            "1.2",
+            "v1.2",
+            "1..3",
+            ".2.3",
+            "1.2.",
+            "1.2.3oops",
+        ] {
+            assert!(!has_full_version(tag), "{tag}");
+        }
+    }
+
+    #[test]
+    fn image_versions_allow_full_versions_with_suffixes() {
+        for tag in [
+            "1.2.3",
+            "v1.2.3",
+            "1.2.3-alpine",
+            "v1.2.3-rc.1",
+            "1.2.3_build4",
+            "1.2.3.4",
+        ] {
+            assert!(has_full_version(tag), "{tag}");
+        }
     }
 
     #[test]

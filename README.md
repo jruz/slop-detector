@@ -13,6 +13,7 @@ Supported languages:
 - JS/TS
 - Just
 - Nix
+- Nomad
 - Playwright
 - Rust
 - Swift
@@ -35,6 +36,7 @@ slop-detector gleam
 slop-detector js
 slop-detector just
 slop-detector nix
+slop-detector nomad
 slop-detector playwright
 slop-detector rust
 slop-detector swift
@@ -117,6 +119,12 @@ slop-detector --create-config-for-violations
 ### Nix
 - `no-unstable-nixpkgs` - Pin nixpkgs to a release branch like nixos-25.11; unstable is fine as a separate input
 - `no-manual-for-all-systems` - Use flake-utils instead of manually defining forAllSystems with genAttrs
+
+### Nomad
+- `env-var-mismatch` - Match environment keys to their variable names
+- `env-var-naming` - Use UPPER_SNAKE_CASE variable references in environment blocks
+- `no-hardcoded-env` - Use variable references instead of literal environment values
+- `pinned-image-versions` - Require `x.x.x` or `vx.x.x` image tags with optional suffixes; variable-based images are exempt
 
 ### Playwright
 - `no-nested-call-args` - Bind inner call results to consts before passing them
