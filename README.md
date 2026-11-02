@@ -15,6 +15,7 @@ Supported languages:
 - Nix
 - Nomad
 - Playwright
+- pnpm
 - Rust
 - Swift
 - OpenTofu
@@ -38,6 +39,7 @@ slop-detector just
 slop-detector nix
 slop-detector nomad
 slop-detector playwright
+slop-detector pnpm
 slop-detector rust
 slop-detector swift
 slop-detector tofu
@@ -124,6 +126,13 @@ slop-detector --create-config-for-violations
 - `env-var-naming` - Use UPPER_SNAKE_CASE variable references in environment blocks
 - `no-hardcoded-env` - Use variable references instead of literal environment values
 - `pinned-image-versions` - Require `x.x.x` or `vx.x.x` image tags with optional suffixes; variable-based images are exempt
+
+### pnpm
+
+Checks `pnpm-workspace.yaml` files recursively.
+
+- `minimum-release-age` - Explicitly set `minimumReleaseAge` greater than zero
+- `no-minimum-release-age-exclude` - Don't bypass the release-age policy with exclusions
 
 ### Playwright
 - `no-nested-call-args` - Bind inner call results to consts before passing them

@@ -1,0 +1,6 @@
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - "@vercel/oidc@4.0.3"
+  - "@playwright/test@1.64.0"
+  - "@typescript-eslint/*"
+  - "webpack@4.47.0 || 5.102.1"

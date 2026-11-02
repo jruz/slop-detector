@@ -7,6 +7,7 @@ pub mod just;
 pub mod nix;
 pub mod nomad;
 pub mod playwright;
+pub mod pnpm;
 pub mod rust;
 pub mod swift;
 pub mod tofu;
