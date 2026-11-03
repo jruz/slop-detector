@@ -23,7 +23,7 @@ Supported languages:
 ## Installation
 
 ```bash
-cargo install --git https://codeberg.org/jruz/slop-detector
+cargo install --git https://github.com/jruz/slop-detector
 ```
 
 ## Usage

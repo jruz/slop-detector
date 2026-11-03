@@ -90,6 +90,8 @@
           [
             deadnix
             fd
+            gh
+            git
             just
             nixfmt
             nushell
