@@ -6,7 +6,7 @@ use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
 const EXCLUDES: &[&str] = &["build"];
-const PATTERNS: &[&str] = &["justfile", "*.just"];
+const PATTERNS: &[&str] = &["justfile", "*.just", "*.justfile"];
 
 struct Rule {
     check: fn(source: &str, tree: &Tree) -> Vec<String>,

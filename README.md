@@ -109,6 +109,9 @@ slop-detector --create-config-for-violations
 - `no-stdout-write` - Use log.ts
 
 ### Just
+
+Checks `justfile`, `*.just`, and `*.justfile` recursively, including dot-prefixed folders. Git-ignored paths are skipped.
+
 - `no-bash-shebang` - Use nushell instead of bash/sh shebangs
 - `no-bunx` - Use `bun run` instead of `bunx`
 - `no-external-without-caret` - Use `^command` to mark external commands in nu recipes
