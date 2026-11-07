@@ -14,6 +14,7 @@ Supported languages:
 - Just
 - Nix
 - Nomad
+- Nushell
 - Playwright
 - pnpm
 - Rust
@@ -38,6 +39,7 @@ slop-detector js
 slop-detector just
 slop-detector nix
 slop-detector nomad
+slop-detector nu
 slop-detector playwright
 slop-detector pnpm
 slop-detector rust
@@ -129,6 +131,15 @@ Checks `justfile`, `*.just`, and `*.justfile` recursively, including dot-prefixe
 - `env-var-naming` - Use UPPER_SNAKE_CASE variable references in environment blocks
 - `no-hardcoded-env` - Use variable references instead of literal environment values
 - `pinned-image-versions` - Require `x.x.x` or `vx.x.x` image tags with optional suffixes; variable-based images are exempt
+
+### Nushell
+- `no-catch-exit` - Don't catch an error just to print it and `exit` or swallow it
+- `no-complete-rethrow` - Don't use `| complete` only to check `exit_code != 0` and `error make`; failing externals already raise
+- `no-error-make` - Don't use `error make`; use `log error` with an actionable message, followed by `exit 1`
+- `no-external-in-each` - Don't run externals inside `each`, `par-each` or `items`, directly or via same-file functions; use `for`
+- `no-ignore-errors` - Don't use `do --ignore-errors`; it swallows failures
+- `no-print-stderr` - Don't use `print --stderr`; use `log error`, `log warning` or `log info`; allowed in `log.nu` and `sandbox.nu`
+- `no-reduce` - Don't use `reduce`; use a `for` loop with a `mut` variable
 
 ### pnpm
 

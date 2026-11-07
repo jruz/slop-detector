@@ -13,7 +13,7 @@ use color_eyre::Result;
 
 use config::{filter_violations, load_config};
 use langs::{
-    compose, css, elixir, gleam, js, just, nix, nomad, playwright, pnpm, rust, swift, tofu,
+    compose, css, elixir, gleam, js, just, nix, nomad, nu, playwright, pnpm, rust, swift, tofu,
 };
 use output::{format_violations, generate_config_toml};
 use types::Violation;
@@ -29,6 +29,7 @@ enum Command {
     Just,
     Nix,
     Nomad,
+    Nu,
     Playwright,
     Pnpm,
     Rust,
@@ -46,6 +47,7 @@ enum SingleCommand {
     Just,
     Nix,
     Nomad,
+    Nu,
     Playwright,
     Pnpm,
     Rust,
@@ -62,6 +64,7 @@ const ALL_COMMANDS: &[SingleCommand] = &[
     SingleCommand::Just,
     SingleCommand::Nix,
     SingleCommand::Nomad,
+    SingleCommand::Nu,
     SingleCommand::Playwright,
     SingleCommand::Pnpm,
     SingleCommand::Rust,
@@ -79,6 +82,7 @@ fn run_check(cmd: SingleCommand) -> types::CheckResult {
         SingleCommand::Just => just::check(),
         SingleCommand::Nix => nix::check(),
         SingleCommand::Nomad => nomad::check(),
+        SingleCommand::Nu => nu::check(),
         SingleCommand::Playwright => playwright::check(),
         SingleCommand::Pnpm => pnpm::check(),
         SingleCommand::Rust => rust::check(),
@@ -91,7 +95,7 @@ fn run_check(cmd: SingleCommand) -> types::CheckResult {
 #[command(name = "slop-detector")]
 #[command(version = version::clap_version())]
 #[command(
-    about = "Linter for detecting anti-patterns in Compose, CSS, Elixir, Gleam, JS/TS, Just, Nix, Nomad, Playwright, pnpm, Rust, Swift, and OpenTofu code"
+    about = "Linter for detecting anti-patterns in Compose, CSS, Elixir, Gleam, JS/TS, Just, Nix, Nomad, Nushell, Playwright, pnpm, Rust, Swift, and OpenTofu code"
 )]
 struct Args {
     #[arg(value_enum, default_value = "all")]
@@ -124,6 +128,7 @@ fn main() -> Result<ExitCode> {
         Command::Just => &[SingleCommand::Just],
         Command::Nix => &[SingleCommand::Nix],
         Command::Nomad => &[SingleCommand::Nomad],
+        Command::Nu => &[SingleCommand::Nu],
         Command::Playwright => &[SingleCommand::Playwright],
         Command::Pnpm => &[SingleCommand::Pnpm],
         Command::Rust => &[SingleCommand::Rust],

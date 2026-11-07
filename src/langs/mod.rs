@@ -6,6 +6,7 @@ pub mod js;
 pub mod just;
 pub mod nix;
 pub mod nomad;
+pub mod nu;
 pub mod playwright;
 pub mod pnpm;
 pub mod rust;
