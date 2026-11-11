@@ -217,4 +217,4 @@ This project was built with AI assistance (Claude Code, Codex, GLM). These tools
 
 ## License
 
-MIT
+Copyright jruz, 2026. Licensed under the EUPL.

@@ -2,7 +2,7 @@
 name = "slop-detector"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "EUPL-1.2+"
 
 [[bin]]
 name = "slop-detector"
