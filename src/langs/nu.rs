@@ -49,6 +49,13 @@ const RULES: &[Rule] = &[
         name: "no-complete-rethrow",
     },
     Rule {
+        check: check_no_config_file,
+        hint: Some(
+            "drop `--no-config-file`; non-interactive Nushell skips startup configuration by default",
+        ),
+        name: "no-config-file",
+    },
+    Rule {
         check: check_no_error_make,
         hint: Some("use `log error` with an actionable message, followed by `exit 1`"),
         name: "no-error-make",
@@ -286,6 +293,19 @@ fn externals_in(working_set: &StateWorkingSet<'_>, block: &Block) -> Vec<Externa
         &mut found,
     );
     found
+}
+
+fn check_no_config_file(analysis: &Analysis<'_>) -> Vec<String> {
+    externals_in(analysis.working_set, analysis.block)
+        .into_iter()
+        .filter(|external| {
+            external.name == "nu" && external.args.iter().any(|arg| arg == "--no-config-file")
+        })
+        .map(|external| {
+            let line = line_of(analysis, external.span);
+            format!("line {line}: `nu --no-config-file` is unnecessary")
+        })
+        .collect()
 }
 
 fn is_print_to_stderr(external: &External) -> bool {
@@ -563,6 +583,18 @@ mod tests {
     #[test]
     fn no_catch_exit_allows_valid() {
         let errors = run_fixture("valid-no-catch-exit", check_no_catch_exit);
+        assert_eq!(errors, Vec::<String>::new());
+    }
+
+    #[test]
+    fn no_config_file_detects_violation() {
+        let errors = run_fixture("no-config-file", check_no_config_file);
+        assert_eq!(errors.len(), 3);
+    }
+
+    #[test]
+    fn no_config_file_allows_valid() {
+        let errors = run_fixture("valid-no-config-file", check_no_config_file);
         assert_eq!(errors, Vec::<String>::new());
     }
 

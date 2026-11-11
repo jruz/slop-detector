@@ -135,6 +135,7 @@ Checks `justfile`, `*.just`, and `*.justfile` recursively, including dot-prefixe
 ### Nushell
 - `no-catch-exit` - Don't catch an error just to print it and `exit` or swallow it
 - `no-complete-rethrow` - Don't use `| complete` only to check `exit_code != 0` and `error make`; failing externals already raise
+- `no-config-file` - Don't pass `--no-config-file` to `nu`; non-interactive Nushell skips startup configuration by default
 - `no-error-make` - Don't use `error make`; use `log error` with an actionable message, followed by `exit 1`
 - `no-external-in-each` - Don't run externals inside `each`, `par-each` or `items`, directly or via same-file functions; use `for`
 - `no-ignore-errors` - Don't use `do --ignore-errors`; it swallows failures
