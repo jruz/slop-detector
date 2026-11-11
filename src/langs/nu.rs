@@ -680,7 +680,7 @@ mod tests {
     #[test]
     fn no_external_in_each_detects_violation() {
         let errors = run_fixture("no-external-in-each", check_no_external_in_each);
-        assert_eq!(errors.len(), 4);
+        assert_eq!(errors.len(), 6);
     }
 
     #[test]

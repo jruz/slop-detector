@@ -17,3 +17,11 @@ def indirect [] {
 def pairs [] {
     {a: 1} | items {|key, value| ^echo $key }
 }
+
+def external-glob [] {
+    [1] | each {|x| ^glob "*.rs" }
+}
+
+def external-open [] {
+    [1] | each {|x| ^open "x" }
+}
