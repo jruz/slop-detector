@@ -56,6 +56,11 @@ const RULES: &[Rule] = &[
         name: "no-config-file",
     },
     Rule {
+        check: check_no_curl,
+        hint: Some("use Nushell's built-in `http` commands, such as `http get` or `http post`"),
+        name: "no-curl",
+    },
+    Rule {
         check: check_no_error_make,
         hint: Some("use `log error` with an actionable message, followed by `exit 1`"),
         name: "no-error-make",
@@ -268,7 +273,10 @@ fn external_of(working_set: &StateWorkingSet<'_>, expr: &Expression) -> Vec<Exte
     let Expr::ExternalCall(head, args) = &expr.expr else {
         return vec![];
     };
-    let head_text = text_of(working_set, head.span);
+    let head_text = match &head.expr {
+        Expr::String(name) => name.clone(),
+        _ => text_of(working_set, head.span),
+    };
     let name = head_text.trim_start_matches('^').to_string();
     let arg_texts = args
         .iter()
@@ -304,6 +312,21 @@ fn check_no_config_file(analysis: &Analysis<'_>) -> Vec<String> {
         .map(|external| {
             let line = line_of(analysis, external.span);
             format!("line {line}: `nu --no-config-file` is unnecessary")
+        })
+        .collect()
+}
+
+fn check_no_curl(analysis: &Analysis<'_>) -> Vec<String> {
+    externals_in(analysis.working_set, analysis.block)
+        .into_iter()
+        .filter(|external| {
+            Path::new(&external.name)
+                .file_name()
+                .is_some_and(|name| name == "curl")
+        })
+        .map(|external| {
+            let line = line_of(analysis, external.span);
+            format!("line {line}: `curl` bypasses Nushell's built-in `http` commands")
         })
         .collect()
 }
@@ -595,6 +618,18 @@ mod tests {
     #[test]
     fn no_config_file_allows_valid() {
         let errors = run_fixture("valid-no-config-file", check_no_config_file);
+        assert_eq!(errors, Vec::<String>::new());
+    }
+
+    #[test]
+    fn no_curl_detects_violation() {
+        let errors = run_fixture("no-curl", check_no_curl);
+        assert_eq!(errors.len(), 7);
+    }
+
+    #[test]
+    fn no_curl_allows_valid() {
+        let errors = run_fixture("valid-no-curl", check_no_curl);
         assert_eq!(errors, Vec::<String>::new());
     }
 
