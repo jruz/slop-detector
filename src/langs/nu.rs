@@ -15,11 +15,12 @@ use nu_protocol::engine::{EngineState, StateWorkingSet};
 use nu_protocol::{BlockId, Span, Value};
 use nu_std::load_standard_library;
 
-use crate::files::find_files;
+use crate::files::{find_files, has_shebang};
+use crate::langs::just;
 use crate::types::{AppError, CheckResult, Violation};
 
 const EXCLUDES: &[&str] = &["target", "node_modules"];
-const PATTERNS: &[&str] = &["*.nu"];
+const PATTERNS: &[&str] = &["*"];
 
 struct Analysis<'ast> {
     base: usize,
@@ -505,6 +506,23 @@ fn read(paths: Vec<String>) -> (Vec<ParsedNu>, Vec<AppError>) {
     let mut errors = Vec::new();
 
     for path in paths {
+        let is_nu = if Path::new(&path).extension().is_some_and(|ext| ext == "nu") {
+            true
+        } else {
+            match has_shebang(&path, "nu") {
+                Ok(found) => found,
+                Err(err) => {
+                    errors.push(AppError::Read {
+                        file: path,
+                        message: err.to_string(),
+                    });
+                    continue;
+                }
+            }
+        };
+        if !is_nu {
+            continue;
+        }
         match fs::read_to_string(&path) {
             Ok(source) => parsed.push(ParsedNu { path, source }),
             Err(err) => errors.push(AppError::Read {
@@ -563,14 +581,24 @@ fn run_rules(files: &[ParsedNu]) -> (Vec<Violation>, Vec<AppError>) {
 
 pub fn check() -> CheckResult {
     let (paths, mut errors) = find(PATTERNS, EXCLUDES);
-    let (files, read_errors) = read(paths);
+    let (mut files, read_errors) = read(paths);
     errors.extend(read_errors);
+    let (recipes, recipe_errors) = just::nushell_sources();
+    errors.extend(recipe_errors);
+    let recipe_files = recipes
+        .into_iter()
+        .map(|(path, source)| ParsedNu { path, source });
+    files.extend(recipe_files);
     let (violations, parse_errors) = run_rules(&files);
     errors.extend(parse_errors);
 
     CheckResult {
         errors,
-        file_count: files.len(),
+        file_count: files
+            .iter()
+            .map(|file| &file.path)
+            .collect::<HashSet<_>>()
+            .len(),
         violations,
     }
 }
@@ -619,6 +647,29 @@ mod tests {
     fn no_config_file_allows_valid() {
         let errors = run_fixture("valid-no-config-file", check_no_config_file);
         assert_eq!(errors, Vec::<String>::new());
+    }
+
+    #[test]
+    fn reads_extensionless_nushell_scripts() {
+        let path = "fixtures/nu/shebang-curl".to_string();
+        let (files, errors) = read(vec![path.clone()]);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(files.len(), 1);
+        let (violations, parse_errors) = run_rules(&files);
+        assert!(parse_errors.is_empty(), "{parse_errors:?}");
+        assert_eq!(violations.len(), 1);
+        let violation = violations.first().expect("curl violation should exist");
+        assert_eq!(violation.rule, "no-curl");
+        assert_eq!(violation.file, path);
+        let diagnostic = violation.errors.first().expect("diagnostic should exist");
+        assert!(diagnostic.starts_with("line 2:"));
+    }
+
+    #[test]
+    fn ignores_non_nushell_files() {
+        let (files, errors) = read(vec!["fixtures/just/nushell-rules.just".to_string()]);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(files.is_empty());
     }
 
     #[test]

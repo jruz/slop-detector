@@ -1,0 +1,2 @@
+#!/usr/bin/env -S nu
+^curl https://example.com

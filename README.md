@@ -133,6 +133,9 @@ Checks `justfile`, `*.just`, and `*.justfile` recursively, including dot-prefixe
 - `pinned-image-versions` - Require `x.x.x` or `vx.x.x` image tags with optional suffixes; variable-based images are exempt
 
 ### Nushell
+
+Checks `.nu` files, scripts with a `nu` shebang, and Just recipes with a `nu` shebang. Recipe diagnostics use the original Justfile line numbers.
+
 - `no-catch-exit` - Don't catch an error just to print it and `exit` or swallow it
 - `no-complete-rethrow` - Don't use `| complete` only to check `exit_code != 0` and `error make`; failing externals already raise
 - `no-config-file` - Don't pass `--no-config-file` to `nu`; non-interactive Nushell skips startup configuration by default

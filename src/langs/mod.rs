@@ -4,6 +4,7 @@ pub mod elixir;
 pub mod gleam;
 pub mod js;
 pub mod just;
+mod just_render;
 pub mod nix;
 pub mod nomad;
 pub mod nu;

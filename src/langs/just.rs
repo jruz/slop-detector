@@ -5,6 +5,8 @@ use tree_sitter::{Node, Parser, Tree};
 use crate::files::find_files;
 use crate::types::{AppError, CheckResult, Violation};
 
+use super::just_render;
+
 const EXCLUDES: &[&str] = &["build"];
 const PATTERNS: &[&str] = &["justfile", "*.just", "*.justfile"];
 
@@ -544,6 +546,82 @@ fn run_rules(files: &[ParsedJust], rules: &[Rule]) -> Vec<Violation> {
         .collect()
 }
 
+fn nushell_recipe_sources(
+    document: &just_render::Document<'_>,
+    graph: &just_render::Parents,
+) -> (Vec<String>, Vec<AppError>) {
+    let mut recipes = Vec::new();
+    let root = document.tree.root_node();
+    let source_bytes = document.source.as_bytes();
+    find_recipes(root, &mut recipes);
+    let mut sources = Vec::new();
+    let mut errors = Vec::new();
+    for recipe in recipes
+        .into_iter()
+        .filter(|recipe| is_nu_recipe(*recipe, source_bytes))
+    {
+        match just_render::render(document, recipe, graph) {
+            Ok(rendered) => sources.extend(rendered),
+            Err(err) => errors.push(AppError::Parse {
+                file: document.path.to_string(),
+                message: err.to_string(),
+            }),
+        }
+    }
+    (sources, errors)
+}
+
+pub fn nushell_sources() -> (Vec<(String, String)>, Vec<AppError>) {
+    let (paths, mut errors) = find(PATTERNS, EXCLUDES);
+    let mut parser = match create_parser() {
+        Ok(parser) => parser,
+        Err(err) => {
+            errors.push(AppError::Parse {
+                file: "just".to_string(),
+                message: err.to_string(),
+            });
+            return (Vec::new(), errors);
+        }
+    };
+    let (files, parse_errors) = parse(paths, &mut parser);
+    errors.extend(parse_errors);
+    let documents: Vec<_> = files
+        .iter()
+        .map(|file| just_render::Document {
+            path: &file.path,
+            source: &file.source,
+            tree: &file.tree,
+        })
+        .collect();
+    let graph = match just_render::parents(&documents) {
+        Ok(graph) => graph,
+        Err(err) => {
+            errors.push(AppError::Parse {
+                file: "just".to_string(),
+                message: err.to_string(),
+            });
+            return (Vec::new(), errors);
+        }
+    };
+    let mut sources = Vec::new();
+    for file in documents {
+        if file.tree.root_node().has_error() {
+            errors.push(AppError::Parse {
+                file: file.path.to_string(),
+                message: "invalid Just syntax".to_string(),
+            });
+            continue;
+        }
+        let (recipes, render_errors) = nushell_recipe_sources(&file, &graph);
+        errors.extend(render_errors);
+        let extracted = recipes
+            .into_iter()
+            .map(|source| (file.path.to_string(), source));
+        sources.extend(extracted);
+    }
+    (sources, errors)
+}
+
 pub fn check() -> CheckResult {
     let (paths, mut errors) = find(PATTERNS, EXCLUDES);
     let (parsed, parse_errors) = match create_parser() {
@@ -576,6 +654,27 @@ mod tests {
         let mut parser = create_parser().expect("parser should load");
         let tree = parser.parse(&source, None).expect("should parse");
         (source, tree)
+    }
+
+    #[test]
+    fn extracts_nushell_recipes_with_original_lines() {
+        let (source, tree) = parse_fixture("nushell-rules");
+        let document = just_render::Document {
+            path: "fixtures/just/nushell-rules.just",
+            source: &source,
+            tree: &tree,
+        };
+        let graph = std::collections::HashMap::new();
+        let (scripts, errors) = nushell_recipe_sources(&document, &graph);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(scripts.len(), 3);
+        let curl_lines: Vec<usize> = scripts
+            .iter()
+            .flat_map(|script| script.lines().enumerate())
+            .filter(|(_, line)| line.contains("^curl"))
+            .map(|(index, _)| index + 1)
+            .collect();
+        assert_eq!(curl_lines, vec![3, 15]);
     }
 
     #[test]

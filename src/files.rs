@@ -1,5 +1,33 @@
+use std::fs;
+use std::io::{self, BufRead as _, Read as _};
+use std::path::Path;
+
 use color_eyre::Result;
 use ignore::WalkBuilder;
+
+pub fn has_shebang(path: &str, interpreter: &str) -> io::Result<bool> {
+    let file = fs::File::open(path)?;
+    let mut reader = io::BufReader::new(file);
+    let mut prefix = Vec::new();
+    reader.by_ref().take(2).read_to_end(&mut prefix)?;
+    if prefix != b"#!" {
+        return Ok(false);
+    }
+    let mut header = String::new();
+    reader.read_line(&mut header)?;
+    let mut words = header.split_whitespace();
+    let Some(command) = words.next().and_then(|word| Path::new(word).file_name()) else {
+        return Ok(false);
+    };
+    if command == interpreter {
+        return Ok(true);
+    }
+    if command != "env" {
+        return Ok(false);
+    }
+    let program = words.find(|word| *word != "-S" && *word != "--split-string");
+    Ok(program == Some(interpreter))
+}
 
 pub fn find_files(patterns: &[&str], excludes: &[&str]) -> Result<Vec<String>> {
     let mut files = Vec::new();
