@@ -323,7 +323,7 @@ mod tests {
     use super::*;
 
     fn parse_fixture(name: &str) -> Body {
-        let path = format!("fixtures/nomad/{name}.hcl");
+        let path = format!("tests/fixtures/nomad/{name}.hcl");
         let content = fs::read_to_string(&path).expect("fixture should exist");
         hcl::from_str(&content).expect("valid hcl")
     }

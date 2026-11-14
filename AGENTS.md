@@ -65,18 +65,18 @@ Rules:
 
 ### 1. Create Fixtures
 
-Create two fixture files in `fixtures/<lang>/`:
+Create two fixture files in `tests/fixtures/<lang>/`:
 
 **Violation fixture** - code that should trigger the rule:
 
 ```
-fixtures/<lang>/rule-name.<ext>
+tests/fixtures/<lang>/rule-name.<ext>
 ```
 
 **Valid fixture** - code that should NOT trigger the rule:
 
 ```
-fixtures/<lang>/valid-rule-name.<ext>
+tests/fixtures/<lang>/valid-rule-name.<ext>
 ```
 
 ### 2. Add Rule to RULES Array

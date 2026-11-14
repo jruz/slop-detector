@@ -1102,7 +1102,7 @@ mod tests {
     use super::*;
 
     fn read_fixture(name: &str) -> String {
-        let path = format!("fixtures/gleam/{name}");
+        let path = format!("tests/fixtures/gleam/{name}");
         fs::read_to_string(&path).expect("fixture should exist")
     }
 

@@ -619,12 +619,12 @@ mod tests {
     use super::*;
 
     fn read_fixture(name: &str) -> String {
-        let path = format!("fixtures/js/{name}");
+        let path = format!("tests/fixtures/js/{name}");
         fs::read_to_string(&path).expect("fixture should exist")
     }
 
     fn parse_ts_fixture(name: &str) -> Vec<Violation> {
-        parse_ts_fixture_as(name, &format!("fixtures/js/{name}.ts"))
+        parse_ts_fixture_as(name, &format!("tests/fixtures/js/{name}.ts"))
     }
 
     fn parse_ts_fixture_as(name: &str, path: &str) -> Vec<Violation> {

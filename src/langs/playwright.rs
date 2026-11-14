@@ -231,7 +231,7 @@ mod tests {
     use super::*;
 
     fn read_fixture(name: &str) -> String {
-        let path = format!("fixtures/playwright/{name}");
+        let path = format!("tests/fixtures/playwright/{name}");
         fs::read_to_string(&path).expect("fixture should exist")
     }
 

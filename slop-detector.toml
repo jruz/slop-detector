@@ -1,6 +1,6 @@
 [ignore]
 rules = ["rust-version-sync"]
-files = ["fixtures"]
+files = ["tests/fixtures"]
 
 [ignore.by-rule]
 no-trait-impl = ["src/langs/js.rs", "src/langs/playwright.rs"]

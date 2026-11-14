@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn no_minimum_release_age_exclude_detects_violation() {
-        let settings = parse("fixtures/pnpm/no-minimum-release-age-exclude.yaml")
+        let settings = parse("tests/fixtures/pnpm/no-minimum-release-age-exclude.yaml")
             .expect("fixture should parse");
         let errors = check_no_minimum_release_age_exclude(&settings);
         assert_eq!(errors.len(), 4);
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn no_minimum_release_age_exclude_allows_valid() {
-        let settings = parse("fixtures/pnpm/valid-no-minimum-release-age-exclude.yaml")
+        let settings = parse("tests/fixtures/pnpm/valid-no-minimum-release-age-exclude.yaml")
             .expect("fixture should parse");
         assert_eq!(
             check_no_minimum_release_age_exclude(&settings),
@@ -184,14 +184,14 @@ mod tests {
     #[test]
     fn minimum_release_age_detects_violation() {
         let settings =
-            parse("fixtures/pnpm/minimum-release-age.yaml").expect("fixture should parse");
+            parse("tests/fixtures/pnpm/minimum-release-age.yaml").expect("fixture should parse");
         assert_eq!(check_minimum_release_age(&settings).len(), 1);
     }
 
     #[test]
     fn minimum_release_age_allows_valid() {
-        let settings =
-            parse("fixtures/pnpm/valid-minimum-release-age.yaml").expect("fixture should parse");
+        let settings = parse("tests/fixtures/pnpm/valid-minimum-release-age.yaml")
+            .expect("fixture should parse");
         assert_eq!(check_minimum_release_age(&settings), Vec::<String>::new());
         assert_eq!(
             check_no_minimum_release_age_exclude(&settings),

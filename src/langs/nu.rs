@@ -693,7 +693,7 @@ mod tests {
     use super::*;
 
     fn run_fixture(name: &str, check: fn(&Analysis<'_>) -> Vec<String>) -> Vec<String> {
-        let path = format!("fixtures/nu/{name}.nu");
+        let path = format!("tests/fixtures/nu/{name}.nu");
         let source = fs::read_to_string(&path).expect("fixture should exist");
         with_analysis(&path, &source, check).expect("fixture should parse")
     }
@@ -736,7 +736,7 @@ mod tests {
 
     #[test]
     fn reads_extensionless_nushell_scripts() {
-        let path = "fixtures/nu/shebang-curl".to_string();
+        let path = "tests/fixtures/nu/shebang-curl".to_string();
         let (files, errors) = read(vec![path.clone()]);
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(files.len(), 1);
@@ -756,7 +756,7 @@ mod tests {
 
     #[test]
     fn ignores_non_nushell_files() {
-        let (files, errors) = read(vec!["fixtures/just/nushell-rules.just".to_string()]);
+        let (files, errors) = read(vec!["tests/fixtures/just/nushell-rules.just".to_string()]);
         assert!(errors.is_empty(), "{errors:?}");
         assert!(files.is_empty());
     }
@@ -798,7 +798,7 @@ mod tests {
     }
 
     fn violated_rules_as(fixture: &str, path: &str) -> Vec<String> {
-        let fixture_path = format!("fixtures/nu/{fixture}.nu");
+        let fixture_path = format!("tests/fixtures/nu/{fixture}.nu");
         let source = fs::read_to_string(&fixture_path).expect("fixture should exist");
         let violations = with_analysis(&fixture_path, &source, |analysis| {
             violations_of(path, analysis)

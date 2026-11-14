@@ -109,7 +109,7 @@ mod tests {
     use super::*;
 
     fn parse_fixture(name: &str) -> (String, StyleSheet<'static, 'static>) {
-        let path = format!("fixtures/css/{name}.css");
+        let path = format!("tests/fixtures/css/{name}.css");
         let source = fs::read_to_string(&path).expect("fixture should exist");
         let source_box = source.into_boxed_str();
         let source_leaked: &'static str = Box::leak(source_box);

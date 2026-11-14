@@ -148,7 +148,7 @@ mod tests {
     use super::*;
 
     fn read_fixture(name: &str) -> String {
-        let path = format!("fixtures/compose/{name}.yaml");
+        let path = format!("tests/fixtures/compose/{name}.yaml");
         fs::read_to_string(&path).expect("fixture should exist")
     }
 

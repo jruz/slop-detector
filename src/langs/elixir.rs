@@ -275,7 +275,7 @@ mod tests {
     use super::*;
 
     fn read_fixture(name: &str, ext: &str) -> String {
-        let path = format!("fixtures/elixir/{name}.{ext}");
+        let path = format!("tests/fixtures/elixir/{name}.{ext}");
         fs::read_to_string(&path).expect("fixture should exist")
     }
 

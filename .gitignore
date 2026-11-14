@@ -1,5 +1,15 @@
+.direnv/
+/target/
+/tmp/*
+!/tmp/.gitkeep
+/node_modules/
+/PLAN.md
+result
+.intentionally-empty-file.o
+/*-unknown-linux-musl-*
+/*-apple-darwin-*
+
+# project entries below, everything above is managed by template-sync
 PLAN.md
 target/
 .direnv
-result
-.intentionally-empty-file.o

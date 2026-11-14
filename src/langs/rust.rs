@@ -1778,14 +1778,14 @@ mod tests {
     use super::*;
 
     fn parse_fixture(name: &str) -> (String, SourceFile) {
-        let path = format!("fixtures/rust/{name}.rs");
+        let path = format!("tests/fixtures/rust/{name}.rs");
         let source = fs::read_to_string(&path).expect("fixture should exist");
         let parse_result = SourceFile::parse(&source, ra_ap_syntax::Edition::Edition2024);
         (source, parse_result.tree())
     }
 
     fn read_toml_fixture(name: &str) -> toml::Value {
-        let path = format!("fixtures/rust/{name}.toml");
+        let path = format!("tests/fixtures/rust/{name}.toml");
         let content = fs::read_to_string(&path).expect("fixture should exist");
         toml::from_str(&content).expect("valid toml")
     }

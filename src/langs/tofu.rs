@@ -250,7 +250,7 @@ mod tests {
     use super::*;
 
     fn parse_fixture(name: &str) -> Body {
-        let path = format!("fixtures/tofu/{name}.tf");
+        let path = format!("tests/fixtures/tofu/{name}.tf");
         let content = fs::read_to_string(&path).expect("fixture should exist");
         hcl::from_str(&content).expect("valid hcl")
     }

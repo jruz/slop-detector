@@ -241,7 +241,7 @@ mod tests {
     use super::*;
 
     fn parse_fixture(name: &str) -> (String, Root) {
-        let path = format!("fixtures/nix/{name}.nix");
+        let path = format!("tests/fixtures/nix/{name}.nix");
         let source = fs::read_to_string(&path).expect("fixture should exist");
         let root = Root::parse(&source).tree();
         (source, root)

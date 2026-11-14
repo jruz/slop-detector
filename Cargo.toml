@@ -11,12 +11,16 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 color-eyre = "0.6.5"
-hcl-rs = "0.19.9"
+hcl = { version = "0.20.0", package = "hcl-rs" }
 ignore = "0.4.33"
 lightningcss = "1.0.0-alpha.70"
 nu-cmd-extra = { version = "0.112.2", default-features = false }
-nu-cmd-lang = { version = "0.112.2", default-features = false, features = ["os"] }
-nu-command = { version = "0.112.2", default-features = false, features = ["os"] }
+nu-cmd-lang = { version = "0.112.2", default-features = false, features = [
+  "os",
+] }
+nu-command = { version = "0.112.2", default-features = false, features = [
+  "os",
+] }
 nu-parser = "0.112.2"
 nu-protocol = { version = "0.112.2", default-features = false }
 nu-std = { version = "0.112.2", default-features = false }
@@ -34,6 +38,9 @@ tree-sitter = "0.24.7"
 tree-sitter-gleam = "1.0.0"
 tree-sitter-just = "0.1.0"
 tree-sitter-swift = "0.6.0"
+
+[build-dependencies]
+thiserror = "=2.0.21"
 
 [lints.rust]
 future_incompatible = "forbid"
@@ -85,7 +92,25 @@ missing_trait_methods = "allow"
 print_stdout = "allow"
 renamed_function_params = "allow"
 wildcard_enum_match_arm = "allow"
+exhaustive_enums = "allow"
+missing_inline_in_public_items = "allow"
+rest_pattern_accessible_field = "allow"
+print_stderr = "allow"
+tests_outside_test_module = "allow"
 
 [profile.release]
 codegen-units = 1
 lto = true
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.fast]
+inherits = "release"
+opt-level = 2
+lto = false
+codegen-units = 16
+incremental = true

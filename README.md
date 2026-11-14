@@ -69,19 +69,23 @@ slop-detector --create-config-for-violations
 ## Rules
 
 ### Compose
+
 - `no-env-passthrough` - Don't redeclare vars `--env-file` passes them automatically
 - `no-latest-tag` - Pin to an exact version tag
 
 ### CSS
+
 - `no-stylelint-disable` - Fix the violation instead of disabling the rule
 
 ### Elixir
+
 - `no-inline-style` - Use CSS classes instead of inline styles
 - `no-nested-call-args` - Bind inner call results to locals before passing them
 - `pinned-dep-versions` - Pin dependency versions in mix.exs
 - `pinned-elixir-version` - Pin to exact matching the flake
 
 ### Gleam
+
 - `exact-versions` - Pin dependency versions in gleam.toml
 - `no-discarded-error-fields` - Log or propagate error details instead of discarding
 - `no-discarded-ok` - Use the Ok value or use `let assert Ok(Nil)` for unit
@@ -96,6 +100,7 @@ slop-detector --create-config-for-violations
 - `no-unwrap` - Use pattern matching or let assert instead
 
 ### JS/TS
+
 - `exact-versions` - Pin dependency versions in package.json
 - `no-array-as-const` - Declare the type instead of using `[...] as const`
 - `no-console` - Use log.ts, tracing.ts or output.ts
@@ -123,10 +128,12 @@ Checks `justfile`, `*.just`, and `*.justfile` recursively, including dot-prefixe
 - `no-recipe-deps` - Call dependencies explicitly with `just <recipe>` in the body
 
 ### Nix
+
 - `no-unstable-nixpkgs` - Pin nixpkgs to a release branch like nixos-25.11; unstable is fine as a separate input
 - `no-manual-for-all-systems` - Use flake-utils instead of manually defining forAllSystems with genAttrs
 
 ### Nomad
+
 - `env-var-mismatch` - Match environment keys to their variable names
 - `env-var-naming` - Use UPPER_SNAKE_CASE variable references in environment blocks
 - `no-hardcoded-env` - Use variable references instead of literal environment values
@@ -154,12 +161,14 @@ Checks `pnpm-workspace.yaml` files recursively.
 - `no-minimum-release-age-exclude` - Don't bypass the release-age policy with exclusions
 
 ### Playwright
+
 - `no-nested-call-args` - Bind inner call results to consts before passing them
 - `no-page` - Use request for server tests, use page in client tests
 - `no-page-request` - Use page for client tests, use request in server tests
 - `no-request` - Use page for client tests, use request in server tests
 
 ### Rust
+
 - `no-allow-attr` - Refactor instead of suppressing lints
 - `no-catch-unwind` - Do not swallow panics
 - `no-cfg-attr-suppress` - No cfg_attr with allow/expect
@@ -175,7 +184,7 @@ Checks `pnpm-workspace.yaml` files recursively.
 - `no-inline-style` - Use CSS classes instead of inline styles
 - `no-is-ok-is-err` - Use the value instead of just checking
 - `no-let-ok-else-continue` - Don't silently skip errors in loops
-- `no-map-discard` - Don't hide values with .map(|_| ...)
+- `no-map-discard` - Don't hide values with .map(|\_| ...)
 - `no-map-err-discard` - Preserve original error in map_err
 - `no-map-or-else` - Use match or .ok_or_else() instead
 - `no-mem-forget` - Do not leak resources
@@ -204,6 +213,7 @@ Checks `pnpm-workspace.yaml` files recursively.
 - `thiserror-unused-fields` - Use all error fields in #[error("...")]
 
 ### Swift
+
 - `no-guard-return` - Throw or log before returning instead of silently discarding
 - `no-nested-call-args` - Bind inner call results to lets before passing them
 - `no-silent-catch` - Handle the error instead of silently discarding it
@@ -211,6 +221,7 @@ Checks `pnpm-workspace.yaml` files recursively.
 - `no-try-question-mark` - Use do/catch to handle errors instead of silencing them
 
 ### OpenTofu
+
 - `banned-data-source` - No external data source
 - `banned-provider` - No external provider
 - `banned-provisioner` - No local-exec/remote-exec

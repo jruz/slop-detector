@@ -688,7 +688,7 @@ mod tests {
     use super::*;
 
     fn parse_fixture(name: &str) -> (String, Tree) {
-        let path = format!("fixtures/just/{name}.just");
+        let path = format!("tests/fixtures/just/{name}.just");
         let source = fs::read_to_string(&path).expect("fixture should exist");
         let mut parser = create_parser().expect("parser should load");
         let tree = parser.parse(&source, None).expect("should parse");
@@ -699,7 +699,7 @@ mod tests {
     fn extracts_nushell_recipes_with_original_lines() {
         let (source, tree) = parse_fixture("nushell-rules");
         let document = just_render::Document {
-            path: "fixtures/just/nushell-rules.just",
+            path: "tests/fixtures/just/nushell-rules.just",
             source: &source,
             tree: &tree,
         };
