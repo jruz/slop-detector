@@ -14,7 +14,22 @@ pub enum Error {
     Utf8(#[from] std::str::Utf8Error),
 }
 
-pub type Parents = HashMap<PathBuf, Vec<PathBuf>>;
+pub struct Parent {
+    file: PathBuf,
+    module: bool,
+}
+
+pub type Parents = HashMap<PathBuf, Vec<Parent>>;
+
+struct Location {
+    root: PathBuf,
+    module: PathBuf,
+}
+
+pub struct Rendered {
+    pub source: String,
+    pub directory: PathBuf,
+}
 
 pub struct Document<'source> {
     pub path: &'source str,
@@ -25,6 +40,7 @@ pub struct Document<'source> {
 struct Context<'source> {
     document: &'source Document<'source>,
     root: &'source Path,
+    module: &'source Path,
     source_path: &'source Path,
     parameters: HashSet<String>,
 }
@@ -96,6 +112,8 @@ fn builtin(node: Node<'_>, context: &Context<'_>) -> Result<String, Error> {
         "justfile" => context.root,
         "source_directory" => parent(context.source_path)?,
         "source_file" => context.source_path,
+        "module_directory" => parent(context.module)?,
+        "module_file" => context.module,
         _ => {
             let error = failure(node, "function requires runtime or unsupported evaluation");
             return Err(error);
@@ -182,7 +200,7 @@ fn evaluate(
     }
 }
 
-fn referenced_files(document: &Document<'_>) -> Result<Vec<PathBuf>, Error> {
+fn referenced_files(document: &Document<'_>) -> Result<Vec<(PathBuf, bool)>, Error> {
     let absolute = fs::canonicalize(document.path)?;
     let directory = parent(&absolute)?;
     let root = document.tree.root_node();
@@ -218,7 +236,7 @@ fn referenced_files(document: &Document<'_>) -> Result<Vec<PathBuf>, Error> {
             for path in candidates {
                 if path.try_exists()? {
                     let canonical = fs::canonicalize(path)?;
-                    references.push(canonical);
+                    references.push((canonical, kind == "module"));
                     break;
                 }
             }
@@ -231,8 +249,11 @@ pub fn parents(documents: &[Document<'_>]) -> Result<Parents, Error> {
     let mut graph = HashMap::new();
     for document in documents {
         let path = fs::canonicalize(document.path)?;
-        for child in referenced_files(document)? {
-            let ancestor = path.clone();
+        for (child, module) in referenced_files(document)? {
+            let ancestor = Parent {
+                file: path.clone(),
+                module,
+            };
             graph.entry(child).or_insert_with(Vec::new).push(ancestor);
         }
     }
@@ -243,7 +264,7 @@ fn roots(
     path: &Path,
     graph: &Parents,
     active: &mut HashSet<PathBuf>,
-) -> Result<Vec<PathBuf>, Error> {
+) -> Result<Vec<Location>, Error> {
     let key = path.to_path_buf();
     if !active.insert(key) {
         return Err(Error::Static {
@@ -254,19 +275,31 @@ fn roots(
     let mut found = Vec::new();
     match graph.get(path) {
         None => {
-            let root = path.to_path_buf();
-            found.push(root);
+            let location = Location {
+                root: path.to_path_buf(),
+                module: path.to_path_buf(),
+            };
+            found.push(location);
         }
         Some(parents) => {
             for ancestor in parents {
-                let ancestor_roots = roots(ancestor, graph, active)?;
-                found.extend(ancestor_roots);
+                let ancestor_roots = roots(&ancestor.file, graph, active)?;
+                let locations = ancestor_roots.into_iter().map(|location| {
+                    if ancestor.module {
+                        return Location {
+                            root: location.root,
+                            module: path.to_path_buf(),
+                        };
+                    }
+                    location
+                });
+                found.extend(locations);
             }
         }
     }
     active.remove(path);
-    found.sort();
-    found.dedup();
+    found.sort_by(|left, right| (&left.root, &left.module).cmp(&(&right.root, &right.module)));
+    found.dedup_by(|left, right| left.root == right.root && left.module == right.module);
     Ok(found)
 }
 
@@ -304,11 +337,80 @@ fn render_body(body: Node<'_>, context: &Context<'_>) -> Result<String, Error> {
     Ok(script)
 }
 
+fn configured_directory(
+    context: &Context<'_>,
+    documents: &[Document<'_>],
+    graph: &Parents,
+) -> Result<PathBuf, Error> {
+    let base = parent(context.module)?;
+    for document in documents {
+        let path = fs::canonicalize(document.path)?;
+        let mut active = HashSet::new();
+        let locations = roots(&path, graph, &mut active)?;
+        if !locations
+            .iter()
+            .any(|location| location.root == context.root && location.module == context.module)
+        {
+            continue;
+        }
+        let root = document.tree.root_node();
+        for setting in nodes_of(root, "setting") {
+            let Some(name_node) = setting.child_by_field_name("left") else {
+                continue;
+            };
+            if text(name_node, document.source)? != "working-directory" {
+                continue;
+            }
+            let value = nodes_of(setting, "string")
+                .into_iter()
+                .next()
+                .ok_or_else(|| failure(setting, "working-directory has no static string value"))?;
+            let directory = string_value(value, document.source)?;
+            let resolved = base.join(directory);
+            return Ok(resolved);
+        }
+    }
+    let directory = base.to_path_buf();
+    Ok(directory)
+}
+
+fn working_directory(
+    recipe: Node<'_>,
+    context: &Context<'_>,
+    documents: &[Document<'_>],
+    graph: &Parents,
+) -> Result<PathBuf, Error> {
+    let base = configured_directory(context, documents, graph)?;
+    for attribute in nodes_of(recipe, "attribute") {
+        let name_node = attribute
+            .named_child(0)
+            .ok_or_else(|| failure(attribute, "attribute has no name"))?;
+        let name = text(name_node, context.document.source)?;
+        if name == "no-cd" {
+            let error = failure(
+                attribute,
+                "no-cd working directory depends on the invocation",
+            );
+            return Err(error);
+        }
+        if name == "working-directory" {
+            let argument = attribute
+                .child_by_field_name("argument")
+                .ok_or_else(|| failure(attribute, "working-directory has no argument"))?;
+            let directory = string_value(argument, context.document.source)?;
+            let resolved = base.join(directory);
+            return Ok(resolved);
+        }
+    }
+    Ok(base)
+}
+
 pub fn render(
     document: &Document<'_>,
     recipe: Node<'_>,
     graph: &Parents,
-) -> Result<Vec<String>, Error> {
+    documents: &[Document<'_>],
+) -> Result<Vec<Rendered>, Error> {
     let body = nodes_of(recipe, "recipe_body")
         .into_iter()
         .next()
@@ -323,14 +425,17 @@ pub fn render(
     let contexts = roots(&absolute, graph, &mut active)?;
     contexts
         .iter()
-        .map(|root| {
+        .map(|location| {
             let context = Context {
                 document,
-                root,
+                root: &location.root,
+                module: &location.module,
                 source_path: &absolute,
                 parameters: parameters.clone(),
             };
-            render_body(body, &context)
+            let source = render_body(body, &context)?;
+            let directory = working_directory(recipe, &context, documents, graph)?;
+            Ok(Rendered { source, directory })
         })
         .collect()
 }

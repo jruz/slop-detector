@@ -337,6 +337,7 @@ pub fn check() -> CheckResult {
     let violations = run_rules(&parsed, RULES);
 
     CheckResult {
+        skipped: Vec::new(),
         errors,
         file_count: parsed.len(),
         violations,

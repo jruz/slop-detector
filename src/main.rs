@@ -105,6 +105,25 @@ struct Args {
     create_config: bool,
 }
 
+fn skip_warning(skipped: &types::SkippedAnalysis) -> String {
+    let target = match &skipped.recipe {
+        Some(recipe) => format!("recipe {recipe} from {}", skipped.file),
+        None => format!("file {}", skipped.file),
+    };
+    let reason = if skipped.reason.contains("Module not found")
+        || skipped.reason.contains("File not found")
+    {
+        "import could not be resolved statically".to_string()
+    } else {
+        skipped
+            .reason
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    format!("Warning: [nushell] skipped {target}: {reason}")
+}
+
 fn main() -> Result<ExitCode> {
     color_eyre::install()?;
 
@@ -137,11 +156,17 @@ fn main() -> Result<ExitCode> {
     };
 
     let mut total_files: usize = 0;
+    let mut total_skipped: usize = 0;
     let mut has_errors = false;
     let mut all_violations: Vec<Violation> = Vec::new();
 
     for cmd in commands_to_run {
         let result = run_check(*cmd);
+        total_skipped += result.skipped.len();
+        for skipped in result.skipped {
+            let warning = skip_warning(&skipped);
+            println!("{warning}");
+        }
 
         let filtered = filter_violations(result.violations, &config);
         total_files += result.file_count;
@@ -176,6 +201,11 @@ fn main() -> Result<ExitCode> {
 
     if has_errors || !all_violations.is_empty() {
         return Ok(ExitCode::FAILURE);
+    }
+
+    if total_skipped > 0 {
+        println!("Checked files: {total_files}; skipped analyses: {total_skipped}");
+        return Ok(ExitCode::SUCCESS);
     }
 
     println!("\u{2713} {total_files} files checked");

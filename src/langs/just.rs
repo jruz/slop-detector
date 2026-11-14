@@ -546,10 +546,20 @@ fn run_rules(files: &[ParsedJust], rules: &[Rule]) -> Vec<Violation> {
         .collect()
 }
 
+fn render_error(path: &str, error: &just_render::Error) -> AppError {
+    let file = path.to_string();
+    let message = error.to_string();
+    if matches!(error, just_render::Error::Io(_)) {
+        return AppError::Read { file, message };
+    }
+    AppError::Parse { file, message }
+}
+
 fn nushell_recipe_sources(
     document: &just_render::Document<'_>,
     graph: &just_render::Parents,
-) -> (Vec<String>, Vec<AppError>) {
+    documents: &[just_render::Document<'_>],
+) -> (Vec<(String, just_render::Rendered)>, Vec<AppError>) {
     let mut recipes = Vec::new();
     let root = document.tree.root_node();
     let source_bytes = document.source.as_bytes();
@@ -560,18 +570,45 @@ fn nushell_recipe_sources(
         .into_iter()
         .filter(|recipe| is_nu_recipe(*recipe, source_bytes))
     {
-        match just_render::render(document, recipe, graph) {
-            Ok(rendered) => sources.extend(rendered),
-            Err(err) => errors.push(AppError::Parse {
-                file: document.path.to_string(),
-                message: err.to_string(),
-            }),
+        let name = match recipe_name(recipe, source_bytes) {
+            Ok(Some(name)) => name.to_string(),
+            result => {
+                errors.push(AppError::Parse {
+                    file: document.path.to_string(),
+                    message: format!("could not identify recipe: {result:?}"),
+                });
+                continue;
+            }
+        };
+        match just_render::render(document, recipe, graph, documents) {
+            Ok(rendered) => {
+                let named = rendered.into_iter().map(|source| (name.clone(), source));
+                sources.extend(named);
+            }
+            Err(err) => {
+                let diagnostic = match err {
+                    just_render::Error::Static { line, message } => AppError::Recipe {
+                        file: document.path.to_string(),
+                        recipe: name,
+                        message: format!("{message} (line {line})"),
+                    },
+                    error => render_error(document.path, &error),
+                };
+                errors.push(diagnostic);
+            }
         }
     }
     (sources, errors)
 }
 
-pub fn nushell_sources() -> (Vec<(String, String)>, Vec<AppError>) {
+pub struct NushellRecipe {
+    pub path: String,
+    pub name: String,
+    pub source: String,
+    pub directory: std::path::PathBuf,
+}
+
+pub fn nushell_sources() -> (Vec<NushellRecipe>, Vec<AppError>) {
     let (paths, mut errors) = find(PATTERNS, EXCLUDES);
     let mut parser = match create_parser() {
         Ok(parser) => parser,
@@ -596,15 +633,13 @@ pub fn nushell_sources() -> (Vec<(String, String)>, Vec<AppError>) {
     let graph = match just_render::parents(&documents) {
         Ok(graph) => graph,
         Err(err) => {
-            errors.push(AppError::Parse {
-                file: "just".to_string(),
-                message: err.to_string(),
-            });
+            let diagnostic = render_error("just", &err);
+            errors.push(diagnostic);
             return (Vec::new(), errors);
         }
     };
     let mut sources = Vec::new();
-    for file in documents {
+    for file in &documents {
         if file.tree.root_node().has_error() {
             errors.push(AppError::Parse {
                 file: file.path.to_string(),
@@ -612,11 +647,14 @@ pub fn nushell_sources() -> (Vec<(String, String)>, Vec<AppError>) {
             });
             continue;
         }
-        let (recipes, render_errors) = nushell_recipe_sources(&file, &graph);
+        let (recipes, render_errors) = nushell_recipe_sources(file, &graph, &documents);
         errors.extend(render_errors);
-        let extracted = recipes
-            .into_iter()
-            .map(|source| (file.path.to_string(), source));
+        let extracted = recipes.into_iter().map(|(name, rendered)| NushellRecipe {
+            path: file.path.to_string(),
+            name,
+            source: rendered.source,
+            directory: rendered.directory,
+        });
         sources.extend(extracted);
     }
     (sources, errors)
@@ -638,6 +676,7 @@ pub fn check() -> CheckResult {
     let violations = run_rules(&parsed, RULES);
 
     CheckResult {
+        skipped: Vec::new(),
         errors,
         file_count: parsed.len(),
         violations,
@@ -665,12 +704,14 @@ mod tests {
             tree: &tree,
         };
         let graph = std::collections::HashMap::new();
-        let (scripts, errors) = nushell_recipe_sources(&document, &graph);
+        let documents = [document];
+        let input = documents.first().expect("document exists");
+        let (scripts, errors) = nushell_recipe_sources(input, &graph, &documents);
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(scripts.len(), 3);
         let curl_lines: Vec<usize> = scripts
             .iter()
-            .flat_map(|script| script.lines().enumerate())
+            .flat_map(|(_, script)| script.source.lines().enumerate())
             .filter(|(_, line)| line.contains("^curl"))
             .map(|(index, _)| index + 1)
             .collect();

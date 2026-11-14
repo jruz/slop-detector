@@ -11,10 +11,18 @@ pub struct Violation {
 }
 
 #[derive(Debug, Clone)]
+pub struct SkippedAnalysis {
+    pub recipe: Option<String>,
+    pub file: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct CheckResult {
     pub errors: Vec<AppError>,
     pub file_count: usize,
     pub violations: Vec<Violation>,
+    pub skipped: Vec<SkippedAnalysis>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -27,6 +35,13 @@ pub enum AppError {
 
     #[error("Failed to read {file}: {message}")]
     Read { file: String, message: String },
+
+    #[error("Could not analyze recipe {recipe} from {file}: {message}")]
+    Recipe {
+        file: String,
+        recipe: String,
+        message: String,
+    },
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

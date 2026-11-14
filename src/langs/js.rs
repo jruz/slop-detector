@@ -607,6 +607,7 @@ pub fn check() -> CheckResult {
     let file_count = parsed_packages.len() + ts_file_count;
 
     CheckResult {
+        skipped: Vec::new(),
         errors,
         file_count,
         violations: [pkg_violations, ts_violations].concat(),

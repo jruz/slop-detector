@@ -97,6 +97,7 @@ pub fn check() -> CheckResult {
     }
 
     CheckResult {
+        skipped: Vec::new(),
         errors,
         file_count,
         violations,

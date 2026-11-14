@@ -1766,6 +1766,7 @@ pub fn check() -> CheckResult {
     let cargo_violations = run_cargo_toml_rules(&parsed_cargo_tomls, CARGO_TOML_RULES);
     violations.extend(cargo_violations);
     CheckResult {
+        skipped: Vec::new(),
         errors,
         file_count: parsed.len() + parsed_cargo_tomls.len(),
         violations,

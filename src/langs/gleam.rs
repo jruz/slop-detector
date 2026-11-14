@@ -1090,6 +1090,7 @@ pub fn check() -> CheckResult {
     violations.extend(toml_violations);
 
     CheckResult {
+        skipped: Vec::new(),
         errors,
         file_count: parsed_gleam.len() + parsed_tomls.len(),
         violations,

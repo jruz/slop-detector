@@ -17,7 +17,7 @@ use nu_std::load_standard_library;
 
 use crate::files::{find_files, has_shebang};
 use crate::langs::just;
-use crate::types::{AppError, CheckResult, Violation};
+use crate::types::{AppError, CheckResult, SkippedAnalysis, Violation};
 
 const EXCLUDES: &[&str] = &["target", "node_modules"];
 const PATTERNS: &[&str] = &["*"];
@@ -416,7 +416,7 @@ fn check_no_external_in_each(analysis: &Analysis<'_>) -> Vec<String> {
         .collect()
 }
 
-fn engine_state_for(path: &str) -> Result<EngineState, AppError> {
+fn engine_state_for(path: &str, working_directory: Option<&Path>) -> Result<EngineState, AppError> {
     let absolute = std::path::absolute(path).map_err(|err| AppError::Read {
         file: path.to_string(),
         message: err.to_string(),
@@ -438,7 +438,10 @@ fn engine_state_for(path: &str) -> Result<EngineState, AppError> {
     engine_state.file = Some(absolute);
     let span = Span::unknown();
     for name in ["PWD", "FILE_PWD"] {
-        let location = directory.clone();
+        let location = match (name, working_directory) {
+            ("PWD", Some(cwd)) => cwd.to_string_lossy().into_owned(),
+            _ => directory.clone(),
+        };
         let value = Value::string(location, span);
         let key = name.to_string();
         engine_state.add_env_var(key, value);
@@ -451,7 +454,16 @@ fn with_analysis<T>(
     source: &str,
     run: impl FnOnce(&Analysis<'_>) -> T,
 ) -> Result<T, AppError> {
-    let engine_state = engine_state_for(path)?;
+    with_analysis_in(path, source, None, run)
+}
+
+fn with_analysis_in<T>(
+    path: &str,
+    source: &str,
+    working_directory: Option<&Path>,
+    run: impl FnOnce(&Analysis<'_>) -> T,
+) -> Result<T, AppError> {
+    let engine_state = engine_state_for(path, working_directory)?;
     let mut working_set = StateWorkingSet::new(&engine_state);
     let base = working_set.next_span_start();
     let contents = source.as_bytes();
@@ -484,6 +496,8 @@ fn with_analysis<T>(
 }
 
 struct ParsedNu {
+    directory: Option<std::path::PathBuf>,
+    recipe: Option<String>,
     path: String,
     source: String,
 }
@@ -524,7 +538,12 @@ fn read(paths: Vec<String>) -> (Vec<ParsedNu>, Vec<AppError>) {
             continue;
         }
         match fs::read_to_string(&path) {
-            Ok(source) => parsed.push(ParsedNu { path, source }),
+            Ok(source) => parsed.push(ParsedNu {
+                path,
+                source,
+                recipe: None,
+                directory: None,
+            }),
             Err(err) => errors.push(AppError::Read {
                 file: path,
                 message: err.to_string(),
@@ -562,21 +581,91 @@ fn violations_of(path: &str, analysis: &Analysis<'_>) -> Vec<Violation> {
         .collect()
 }
 
-fn run_rules(files: &[ParsedNu]) -> (Vec<Violation>, Vec<AppError>) {
-    let mut violations = Vec::new();
+fn analysis_errors(diagnostics: Vec<AppError>) -> (Vec<AppError>, Vec<SkippedAnalysis>) {
     let mut errors = Vec::new();
+    let mut skipped = Vec::new();
+    for diagnostic in diagnostics {
+        match diagnostic {
+            AppError::Parse { file, message } => skipped.push(SkippedAnalysis {
+                recipe: None,
+                file,
+                reason: message,
+            }),
+            AppError::Recipe {
+                file,
+                recipe,
+                message,
+            } => skipped.push(SkippedAnalysis {
+                recipe: Some(recipe),
+                file,
+                reason: message,
+            }),
+            error => errors.push(error),
+        }
+    }
+    (errors, skipped)
+}
+
+fn source_error(file: &ParsedNu, error: AppError) -> AppError {
+    match error {
+        AppError::Parse {
+            file: path,
+            message,
+        } => match &file.recipe {
+            Some(recipe) => AppError::Recipe {
+                file: file.path.clone(),
+                recipe: recipe.clone(),
+                message,
+            },
+            None => AppError::Parse {
+                file: path,
+                message,
+            },
+        },
+        other => other,
+    }
+}
+
+fn run_rules(files: &[ParsedNu]) -> CheckResult {
+    let mut violations = Vec::new();
+    let mut diagnostics = Vec::new();
+    let mut checked = HashSet::new();
 
     for file in files {
-        let analyzed = with_analysis(&file.path, &file.source, |analysis| {
-            violations_of(&file.path, analysis)
-        });
+        let analysis_path = match &file.directory {
+            Some(directory) => directory
+                .join("__slop_just_temporary_script__/recipe.nu")
+                .to_string_lossy()
+                .into_owned(),
+            None => file.path.clone(),
+        };
+        let rules = |analysis: &Analysis<'_>| violations_of(&file.path, analysis);
+        let analyzed = match file.directory.as_deref() {
+            Some(directory) => {
+                let working_directory = Some(directory);
+                with_analysis_in(&analysis_path, &file.source, working_directory, rules)
+            }
+            None => with_analysis(&analysis_path, &file.source, rules),
+        };
         match analyzed {
-            Ok(found) => violations.extend(found),
-            Err(err) => errors.push(err),
+            Ok(found) => {
+                violations.extend(found);
+                checked.insert(&file.path);
+            }
+            Err(err) => {
+                let diagnostic = source_error(file, err);
+                diagnostics.push(diagnostic);
+            }
         }
     }
 
-    (violations, errors)
+    let (errors, skipped) = analysis_errors(diagnostics);
+    CheckResult {
+        errors,
+        skipped,
+        file_count: checked.len(),
+        violations,
+    }
 }
 
 pub fn check() -> CheckResult {
@@ -585,22 +674,18 @@ pub fn check() -> CheckResult {
     errors.extend(read_errors);
     let (recipes, recipe_errors) = just::nushell_sources();
     errors.extend(recipe_errors);
-    let recipe_files = recipes
-        .into_iter()
-        .map(|(path, source)| ParsedNu { path, source });
+    let recipe_files = recipes.into_iter().map(|recipe| ParsedNu {
+        path: recipe.path,
+        recipe: Some(recipe.name),
+        source: recipe.source,
+        directory: Some(recipe.directory),
+    });
     files.extend(recipe_files);
-    let (violations, parse_errors) = run_rules(&files);
-    errors.extend(parse_errors);
-
-    CheckResult {
-        errors,
-        file_count: files
-            .iter()
-            .map(|file| &file.path)
-            .collect::<HashSet<_>>()
-            .len(),
-        violations,
-    }
+    let mut result = run_rules(&files);
+    let (failures, skipped) = analysis_errors(errors);
+    result.errors.extend(failures);
+    result.skipped.extend(skipped);
+    result
 }
 
 #[cfg(test)]
@@ -655,10 +740,14 @@ mod tests {
         let (files, errors) = read(vec![path.clone()]);
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(files.len(), 1);
-        let (violations, parse_errors) = run_rules(&files);
-        assert!(parse_errors.is_empty(), "{parse_errors:?}");
-        assert_eq!(violations.len(), 1);
-        let violation = violations.first().expect("curl violation should exist");
+        let result = run_rules(&files);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert!(result.skipped.is_empty(), "{:?}", result.skipped);
+        assert_eq!(result.violations.len(), 1);
+        let violation = result
+            .violations
+            .first()
+            .expect("curl violation should exist");
         assert_eq!(violation.rule, "no-curl");
         assert_eq!(violation.file, path);
         let diagnostic = violation.errors.first().expect("diagnostic should exist");

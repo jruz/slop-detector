@@ -219,6 +219,7 @@ pub fn check() -> CheckResult {
     errors.extend(check_errors);
 
     CheckResult {
+        skipped: Vec::new(),
         errors,
         file_count,
         violations,

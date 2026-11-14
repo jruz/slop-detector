@@ -3,6 +3,21 @@ mod tests {
     use std::{fs, process, time};
 
     fn run_fixture(files: &[(&str, &str)]) -> color_eyre::Result<process::Output> {
+        let sources: Vec<_> = files
+            .iter()
+            .map(|(path, source)| (*path, source.as_bytes()))
+            .collect();
+        run_fixture_bytes(&sources)
+    }
+
+    fn run_fixture_bytes(files: &[(&str, &[u8])]) -> color_eyre::Result<process::Output> {
+        run_fixture_with_oracle(files, None)
+    }
+
+    fn run_fixture_with_oracle(
+        files: &[(&str, &[u8])],
+        recipe: Option<&str>,
+    ) -> color_eyre::Result<process::Output> {
         let timestamp = time::SystemTime::now().duration_since(time::UNIX_EPOCH)?;
         let root = std::env::temp_dir().join(format!(
             "slop-detector-nu-{}-{}",
@@ -16,6 +31,50 @@ mod tests {
             let parent = file.parent().expect("fixture has a parent directory");
             fs::create_dir_all(parent)?;
             fs::write(file, source)?;
+        }
+        if let Some(name) = recipe {
+            for (probe, relative) in [
+                ("tasks::context-report", ""),
+                ("tasks::override-report", "other"),
+            ] {
+                let actual = process::Command::new("just")
+                    .arg(probe)
+                    .current_dir(&root)
+                    .output()?;
+                let actual_directory = String::from_utf8(actual.stdout)?;
+                let diagnostic = String::from_utf8(actual.stderr)?;
+                let expected_path = root.join(relative);
+                let expected_directory = fs::canonicalize(expected_path)?;
+                if !actual.status.success()
+                    || actual_directory.trim() != expected_directory.to_string_lossy()
+                {
+                    return Err(color_eyre::eyre::eyre!(
+                        "Just working directory differs for {probe}: {actual_directory}; {diagnostic}"
+                    ));
+                }
+            }
+            let oracle = process::Command::new("just")
+                .args(["--dry-run", name])
+                .current_dir(&root)
+                .output()?;
+            let rendered = String::from_utf8(oracle.stderr)?;
+            if !oracle.status.success() {
+                return Err(color_eyre::eyre::eyre!("Just oracle failed: {rendered}"));
+            }
+            for relative in [
+                "root-env.nu",
+                ".just/module-env.nu",
+                "recipes/source-env.nu",
+            ] {
+                let absolute = root.join(relative);
+                let expected = absolute.to_string_lossy();
+                let expected_path = expected.as_ref();
+                if !rendered.contains(expected_path) {
+                    return Err(color_eyre::eyre::eyre!(
+                        "Just oracle did not render {expected}: {rendered}"
+                    ));
+                }
+            }
         }
         let output = process::Command::new(env!("CARGO_BIN_EXE_slop-detector"))
             .arg("nu")
@@ -157,6 +216,81 @@ mod tests {
     }
 
     #[test]
+    fn matches_just_root_module_and_source_contexts() {
+        let files: &[(&str, &[u8])] = &[
+            ("justfile", b"mod tasks '.just/tasks.just'\n"),
+            (".just/tasks.just", b"set working-directory := '..'\nimport '../recipes/fetch.just'\n"),
+            ("root-env.nu", b"let root_url = 'https://root.example.com'\n"),
+            (".just/module-env.nu", b"let module_url = 'https://module.example.com'\n"),
+            ("recipes/source-env.nu", b"let source_url = 'https://source.example.com'\n"),
+            ("recipes/fetch.just", b"fetch:\n    #!/usr/bin/env nu\n    source '{{justfile_directory()}}/root-env.nu'\n    source '{{module_directory()}}/module-env.nu'\n    source '{{source_directory()}}/source-env.nu'\n    ^curl $root_url $module_url $source_url\n\ncontext-report:\n    #!/usr/bin/env nu\n    print $env.PWD\n\n[working-directory: 'other']\noverride-report:\n    #!/usr/bin/env nu\n    print $env.PWD\n"),
+            ("other/env.nu", b"let endpoint = 'https://other.example.com'\n"),
+        ];
+        let recipe = Some("tasks::fetch");
+        let output = run_fixture_with_oracle(files, recipe).expect("fixture matches Just");
+        let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+        assert!(!stdout.contains("Warning:"), "{stdout}");
+        assert!(!stdout.contains("Error:"), "{stdout}");
+        assert_eq!(stdout.matches("no-curl").count(), 1, "{stdout}");
+    }
+
+    #[test]
+    fn does_not_resolve_relative_imports_from_the_project_directory() {
+        let files = [
+            ("justfile", "mod tasks '.just/tasks.just'\n"),
+            (".just/tasks.just", "import '../recipes/fetch.just'\n"),
+            (".just/env.nu", "let endpoint = 'https://example.com'\n"),
+            (
+                "recipes/fetch.just",
+                "fetch:\n    #!/usr/bin/env nu\n    source env.nu\n    ^curl $endpoint\n",
+            ),
+        ];
+        let output = run_fixture(&files).expect("fixture runs");
+        let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+        assert!(stdout.contains("Warning: [nushell] skipped recipe fetch from ./recipes/fetch.just: import could not be resolved statically"), "{stdout}");
+        assert!(!stdout.contains("no-curl"), "{stdout}");
+        assert!(output.status.success(), "{stdout}");
+    }
+
+    #[test]
+    fn respects_working_directory_settings_and_recipe_overrides() {
+        let files = [
+            (
+                "justfile",
+                "set working-directory := 'scripts'\nfetch:\n    #!/usr/bin/env nu\n    source '{{justfile_directory()}}/scripts/env.nu'\n    ^curl $endpoint\n\n[working-directory: 'other']\nfetch-other:\n    #!/usr/bin/env nu\n    source '{{justfile_directory()}}/scripts/other/env.nu'\n    ^curl $endpoint\n",
+            ),
+            ("scripts/env.nu", "let endpoint = 'https://example.com'\n"),
+            (
+                "scripts/other/env.nu",
+                "let endpoint = 'https://other.example.com'\n",
+            ),
+        ];
+        let output = run_fixture(&files).expect("fixture runs");
+        let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+        assert!(!stdout.contains("Warning:"), "{stdout}");
+        assert_eq!(stdout.matches("no-curl").count(), 2, "{stdout}");
+    }
+
+    #[test]
+    fn applies_imported_working_directory_settings_to_the_module() {
+        let files = [
+            (
+                "justfile",
+                "import 'config/settings.just'\nfetch:\n    #!/usr/bin/env nu\n    source '{{justfile_directory()}}/scripts/env.nu'\n    ^curl $endpoint\n",
+            ),
+            (
+                "config/settings.just",
+                "set working-directory := 'scripts'\n",
+            ),
+            ("scripts/env.nu", "let endpoint = 'https://example.com'\n"),
+        ];
+        let output = run_fixture(&files).expect("fixture runs");
+        let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+        assert!(!stdout.contains("Warning:"), "{stdout}");
+        assert_eq!(stdout.matches("no-curl").count(), 1, "{stdout}");
+    }
+
+    #[test]
     fn reports_cyclic_static_variables() {
         let files = [(
             "justfile",
@@ -165,7 +299,11 @@ mod tests {
         let output = run_fixture(&files).expect("fixture runs");
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(stdout.contains("cyclic Just variable"), "{stdout}");
-        assert!(!output.status.success());
+        assert!(
+            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
+            "{stdout}"
+        );
+        assert!(output.status.success(), "{stdout}");
     }
 
     #[test]
@@ -180,8 +318,12 @@ mod tests {
             stdout.contains("multiline interpolation is not supported"),
             "{stdout}"
         );
-        assert!(stdout.contains("line 4:"), "{stdout}");
-        assert!(!output.status.success());
+        assert!(stdout.contains("line 4"), "{stdout}");
+        assert!(
+            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
+            "{stdout}"
+        );
+        assert!(output.status.success(), "{stdout}");
     }
 
     #[test]
@@ -193,10 +335,15 @@ mod tests {
         let output = run_fixture(&files).expect("fixture runs");
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(
-            stdout.contains("cannot statically render Just recipe"),
+            stdout.contains("expression requires runtime or unsupported evaluation"),
             "{stdout}"
         );
-        assert!(stdout.contains("line 1:"), "{stdout}");
+        assert!(stdout.contains("line 1"), "{stdout}");
+        assert!(
+            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
+            "{stdout}"
+        );
+        assert!(!stdout.contains("Error:"), "{stdout}");
         assert_eq!(stdout.matches("no-curl").count(), 1, "{stdout}");
         assert!(!output.status.success());
     }
@@ -213,8 +360,12 @@ mod tests {
             stdout.contains("recipe parameter requires runtime arguments"),
             "{stdout}"
         );
-        assert!(stdout.contains("line 4:"), "{stdout}");
-        assert!(!output.status.success());
+        assert!(stdout.contains("line 4"), "{stdout}");
+        assert!(
+            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
+            "{stdout}"
+        );
+        assert!(output.status.success(), "{stdout}");
     }
 
     #[test]
@@ -225,10 +376,64 @@ mod tests {
         )];
         let output = run_fixture(&files).expect("fixture runs");
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
-        assert!(stdout.contains("File not found"), "{stdout}");
-        assert!(stdout.contains("line 3:"), "{stdout}");
+        assert!(stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile: import could not be resolved statically"), "{stdout}");
         assert!(!stdout.contains("Not a constant"), "{stdout}");
+        assert!(output.status.success(), "{stdout}");
+    }
+
+    #[test]
+    fn warns_and_skips_invalid_nushell_files() {
+        let files = [
+            ("broken.nu", "let =\n"),
+            ("scripts/broken", "#!/usr/bin/env nu\nlet =\n"),
+            ("valid.nu", "http get https://example.com\n"),
+        ];
+        let output = run_fixture(&files).expect("fixture runs");
+        let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+        assert!(output.status.success(), "{stdout}");
+        assert!(
+            stdout.contains("Warning: [nushell] skipped file ./broken.nu:"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("Warning: [nushell] skipped file ./scripts/broken:"),
+            "{stdout}"
+        );
+        assert!(!stdout.contains("Error:"), "{stdout}");
+        assert!(
+            stdout.contains("Checked files: 1; skipped analyses: 2"),
+            "{stdout}"
+        );
+    }
+
+    #[test]
+    fn still_fails_for_violations_in_other_files() {
+        let files = [
+            ("broken.nu", "use missing-module.nu\n"),
+            ("fetch.nu", "^curl https://example.com\n"),
+        ];
+        let output = run_fixture(&files).expect("fixture runs");
+        let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(!output.status.success());
+        assert!(
+            stdout.contains("Warning: [nushell] skipped file ./broken.nu:"),
+            "{stdout}"
+        );
+        assert!(!stdout.contains("Error:"), "{stdout}");
+        assert_eq!(stdout.matches("no-curl").count(), 1, "{stdout}");
+    }
+
+    #[test]
+    fn read_failures_remain_errors() {
+        let files: &[(&str, &[u8])] = &[("broken.nu", b"\xff")];
+        let output = run_fixture_bytes(files).expect("fixture runs");
+        let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+        assert!(!output.status.success());
+        assert!(
+            stdout.contains("Error: Failed to read ./broken.nu:"),
+            "{stdout}"
+        );
+        assert!(!stdout.contains("Warning:"), "{stdout}");
     }
 
     #[test]
@@ -236,9 +441,16 @@ mod tests {
         let files = [("justfile", "fetch:\n    #!/usr/bin/env nu\n    let =\n")];
         let output = run_fixture(&files).expect("fixture runs");
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
-        assert!(!output.status.success());
-        assert!(stdout.contains("Error:"), "{stdout}");
-        assert!(stdout.contains("justfile"), "{stdout}");
+        assert!(output.status.success(), "{stdout}");
+        assert!(!stdout.contains("Error:"), "{stdout}");
+        assert!(
+            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
+            "{stdout}"
+        );
         assert!(stdout.contains("line 3:"), "{stdout}");
+        assert!(
+            stdout.contains("Checked files: 0; skipped analyses: 1"),
+            "{stdout}"
+        );
     }
 }

@@ -100,6 +100,7 @@ fn app_error(file: String, error: Error) -> AppError {
 
 pub fn check() -> CheckResult {
     let mut result = CheckResult {
+        skipped: Vec::new(),
         errors: vec![],
         file_count: 0,
         violations: vec![],
