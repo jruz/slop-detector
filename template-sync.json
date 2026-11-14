@@ -1,8 +1,5 @@
 {
-  "review": [
-    "Dockerfile.rust",
-    "renovate.json"
-  ],
+  "review": ["Dockerfile.rust", "renovate.json"],
   "revision": "09c041663fe839034dfed31ad5b20f00c4f32ae9",
   "template": "jruz/template-rs"
 }
