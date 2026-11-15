@@ -12,7 +12,7 @@ use nu_protocol::ast::{
 };
 use nu_protocol::casing::Casing;
 use nu_protocol::engine::{EngineState, StateWorkingSet};
-use nu_protocol::{BlockId, Span, Value};
+use nu_protocol::{BlockId, Span, Value, VarId};
 use nu_std::load_standard_library;
 
 use crate::files::{find_files, has_shebang};
@@ -216,11 +216,87 @@ fn only_rethrows(working_set: &StateWorkingSet<'_>, call: &Call) -> bool {
     condition_fails && body_rethrows
 }
 
+fn exit_code_variable(expr: &Expression) -> Option<VarId> {
+    if !is_exit_code_path(expr) {
+        return None;
+    }
+    let Expr::FullCellPath(path) = &expr.expr else {
+        return None;
+    };
+    match path.head.expr {
+        Expr::Var(variable) if path.tail.len() == 1 => Some(variable),
+        _ => None,
+    }
+}
+
+fn exit_code_exception(expr: &Expression) -> Vec<VarId> {
+    let Expr::BinaryOp(lhs, op, rhs) = &expr.expr else {
+        return vec![];
+    };
+    if !matches!(
+        op.expr,
+        Expr::Operator(Operator::Comparison(Comparison::Equal))
+    ) {
+        return vec![];
+    }
+    match (&lhs.expr, &rhs.expr) {
+        (_, Expr::Int(code)) if *code != 0 => exit_code_variable(lhs).into_iter().collect(),
+        (Expr::Int(code), _) if *code != 0 => exit_code_variable(rhs).into_iter().collect(),
+        _ => vec![],
+    }
+}
+
+fn handled_rethrows_in_block(analysis: &Analysis<'_>, block: &Block) -> Vec<Span> {
+    let working_set = analysis.working_set;
+    let mut exceptions = HashSet::new();
+    let mut handled_rethrows = Vec::new();
+    for pipeline in &block.pipelines {
+        for element in &pipeline.elements {
+            let Expr::Call(call) = &element.expr.expr else {
+                continue;
+            };
+            if working_set.get_decl(call.decl_id).name() != "if" {
+                continue;
+            }
+            let Some(condition) = call.positional_iter().next() else {
+                continue;
+            };
+            if let Expr::BinaryOp(lhs, _, _) = &condition.expr
+                && let Some(variable) = exit_code_variable(lhs)
+                && only_rethrows(working_set, call)
+                && exceptions.contains(&variable)
+            {
+                handled_rethrows.push(call.head);
+            }
+            let mut handled = Vec::new();
+            condition.flat_map(working_set, &exit_code_exception, &mut handled);
+            exceptions.extend(handled);
+        }
+    }
+    handled_rethrows
+}
+
+fn handled_rethrows_in_expression(analysis: &Analysis<'_>, expr: &Expression) -> Vec<Span> {
+    match expr.expr {
+        Expr::Block(id) | Expr::Closure(id) | Expr::Subexpression(id) => {
+            let block = analysis.working_set.get_block(id);
+            handled_rethrows_in_block(analysis, block)
+        }
+        _ => vec![],
+    }
+}
+
 fn check_no_complete_rethrow(analysis: &Analysis<'_>) -> Vec<String> {
     let working_set = analysis.working_set;
+    let mut handled = handled_rethrows_in_block(analysis, analysis.block);
+    analysis.block.flat_map(
+        working_set,
+        &|expr| handled_rethrows_in_expression(analysis, expr),
+        &mut handled,
+    );
     calls_in(working_set, analysis.block, "if")
         .into_iter()
-        .filter(|call| only_rethrows(working_set, call))
+        .filter(|call| only_rethrows(working_set, call) && !handled.contains(&call.head))
         .map(|call| {
             let line = line_of(analysis, call.head);
             format!("line {line}: `exit_code != 0` only rethrows")

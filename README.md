@@ -144,7 +144,7 @@ Checks `justfile`, `*.just`, and `*.justfile` recursively, including dot-prefixe
 Checks `.nu` files, scripts with a `nu` shebang, and Just recipes with a `nu` shebang. Recipe diagnostics use the original Justfile line numbers.
 
 - `no-catch-exit` - Don't catch an error just to print it and `exit` or swallow it
-- `no-complete-rethrow` - Don't use `| complete` only to check `exit_code != 0` and `error make`; failing externals already raise
+- `no-complete-rethrow` - Reject captured exit-status rethrows without prior handling of expected nonzero statuses
 - `no-config-file` - Don't pass `--no-config-file` to `nu`; non-interactive Nushell skips startup configuration by default
 - `no-curl` - Use Nushell's built-in `http` commands instead of `curl`
 - `no-error-make` - Don't use `error make`; use `log error` with an actionable message, followed by `exit 1`

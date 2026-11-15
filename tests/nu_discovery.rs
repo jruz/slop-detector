@@ -134,6 +134,57 @@ mod tests {
     }
 
     #[test]
+    fn allows_explicit_nonzero_exit_code_handling_before_rethrowing() {
+        let codes: [i64; 3] = [1, 2, 130];
+        for code in codes {
+            let source = format!(
+                "def main [] {{\nlet result = (^fzf | complete)\nif $result.exit_code == {code} {{ return }}\nif $result.exit_code != 0 {{ error make {{msg: $result.stderr}} }}\n$result.stdout\n}}\n"
+            );
+            let output = run_fixture(&[("picker.nu", &source)]).expect("fixture runs");
+            let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+            assert!(!stdout.contains("no-complete-rethrow"), "{stdout}");
+            assert!(!stdout.contains("Warning:"), "{stdout}");
+            assert_eq!(stdout.matches("no-error-make").count(), 1, "{stdout}");
+        }
+    }
+
+    #[test]
+    fn still_flags_rethrows_without_a_prior_exception_for_the_same_result() {
+        for handler in [
+            "",
+            "if $result.exit_code == 0 { print 'success' }",
+            "if $other.exit_code == 130 { return }",
+            "if true { if $result.exit_code == 130 { return } }",
+        ] {
+            let source = format!(
+                "def main [] {{\nlet result = (^fzf | complete)\nlet other = (^git status | complete)\n{handler}\nif $result.exit_code != 0 {{ error make {{msg: $result.stderr}} }}\n}}\n"
+            );
+            let output = run_fixture(&[("picker.nu", &source)]).expect("fixture runs");
+            let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+            assert!(!stdout.contains("Warning:"), "{stdout}");
+            assert_eq!(stdout.matches("no-complete-rethrow").count(), 1, "{stdout}");
+        }
+    }
+
+    #[test]
+    fn still_flags_rethrows_in_else_if_branches() {
+        let source = "let result = (^fzf | complete)\nif $result.exit_code == 0 { print $result.stdout } else if $result.exit_code != 0 { error make {msg: $result.stderr} }\n";
+        let output = run_fixture(&[("picker.nu", source)]).expect("fixture runs");
+        let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+        assert!(!stdout.contains("Warning:"), "{stdout}");
+        assert_eq!(stdout.matches("no-complete-rethrow").count(), 1, "{stdout}");
+    }
+
+    #[test]
+    fn later_exit_code_handling_does_not_exempt_an_earlier_rethrow() {
+        let source = "let result = (^fzf | complete)\nif $result.exit_code != 0 { error make {msg: $result.stderr} }\nif $result.exit_code == 130 { return }\n";
+        let output = run_fixture(&[("picker.nu", source)]).expect("fixture runs");
+        let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+        assert!(!stdout.contains("Warning:"), "{stdout}");
+        assert_eq!(stdout.matches("no-complete-rethrow").count(), 1, "{stdout}");
+    }
+
+    #[test]
     fn renders_static_paths_using_the_root_justfile() {
         let files = [
             ("justfile", "mod tasks '.just/tasks.just'\n"),
