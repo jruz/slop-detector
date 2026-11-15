@@ -34,6 +34,7 @@ pub fn find_files(patterns: &[&str], excludes: &[&str]) -> Result<Vec<String>> {
 
     let mut builder = WalkBuilder::new(".");
     builder.hidden(false);
+    builder.filter_entry(|entry| entry.file_name() != ".git");
     builder.git_ignore(true);
     builder.git_global(true);
     builder.git_exclude(true);
