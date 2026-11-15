@@ -9,11 +9,11 @@ name = "slop-detector"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.6.7", features = ["derive"] }
-color-eyre = "0.6.5"
-hcl = { version = "0.20.0", package = "hcl-rs" }
-ignore = "0.4.33"
-lightningcss = "1.0.0-alpha.70"
+clap = { version = "=4.6.7", features = ["derive"] }
+color-eyre = "=0.6.5"
+hcl = { version = "=0.20.0", package = "hcl-rs" }
+ignore = "=0.4.33"
+lightningcss = "=1.0.0-alpha.70"
 nu-cmd-extra = { version = "0.112.2", default-features = false }
 nu-cmd-lang = { version = "0.112.2", default-features = false, features = [
   "os",
@@ -24,20 +24,20 @@ nu-command = { version = "0.112.2", default-features = false, features = [
 nu-parser = "0.112.2"
 nu-protocol = { version = "0.112.2", default-features = false }
 nu-std = { version = "0.112.2", default-features = false }
-oxc = "0.110.0"
-oxc_ast_visit = "0.110.0"
-ra_ap_syntax = "0.0.316"
-rnix = "0.15.0"
-rowan = "0.17.0"
-serde = { version = "1.0.229", features = ["derive"] }
-serde-saphyr = "2.0.0"
-serde_json = "1.0.154"
-thiserror = "2.0.21"
-toml = "1.1.8"
-tree-sitter = "0.24.7"
-tree-sitter-gleam = "1.0.0"
-tree-sitter-just = "0.1.0"
-tree-sitter-swift = "0.6.0"
+oxc = "=0.110.0"
+oxc_ast_visit = "=0.110.0"
+ra_ap_syntax = "=0.0.316"
+rnix = "=0.15.0"
+rowan = "=0.17.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde-saphyr = "=2.0.0"
+serde_json = "=1.0.154"
+thiserror = "=2.0.21"
+toml = "=1.1.8+spec-1.1.0"
+tree-sitter = "=0.24.7"
+tree-sitter-gleam = "=1.0.0"
+tree-sitter-just = "=0.1.0"
+tree-sitter-swift = "=0.6.0"
 
 [build-dependencies]
 thiserror = "=2.0.21"
