@@ -27,7 +27,7 @@ nu-std = { version = "0.112.2", default-features = false }
 oxc = "=0.110.0"
 oxc_ast_visit = "=0.110.0"
 ra_ap_syntax = "=0.0.316"
-rnix = "=0.15.0"
+rnix = "=0.15.1"
 rowan = "=0.17.0"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde-saphyr = "=2.0.0"
