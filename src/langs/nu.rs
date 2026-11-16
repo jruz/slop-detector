@@ -17,7 +17,7 @@ use nu_std::load_standard_library;
 
 use crate::files::{find_files, has_shebang};
 use crate::langs::just;
-use crate::types::{AppError, CheckResult, SkippedAnalysis, Violation};
+use crate::types::{AppError, CheckResult, SkipCategory, SkippedAnalysis, Violation};
 
 const EXCLUDES: &[&str] = &["target", "node_modules"];
 const PATTERNS: &[&str] = &["*"];
@@ -657,12 +657,17 @@ fn violations_of(path: &str, analysis: &Analysis<'_>) -> Vec<Violation> {
         .collect()
 }
 
-fn analysis_errors(diagnostics: Vec<AppError>) -> (Vec<AppError>, Vec<SkippedAnalysis>) {
+fn analysis_errors(
+    diagnostics: Vec<AppError>,
+    category: SkipCategory,
+) -> (Vec<AppError>, Vec<SkippedAnalysis>) {
     let mut errors = Vec::new();
     let mut skipped = Vec::new();
     for diagnostic in diagnostics {
         match diagnostic {
             AppError::Parse { file, message } => skipped.push(SkippedAnalysis {
+                category,
+                language: "nushell",
                 recipe: None,
                 file,
                 reason: message,
@@ -672,6 +677,8 @@ fn analysis_errors(diagnostics: Vec<AppError>) -> (Vec<AppError>, Vec<SkippedAna
                 recipe,
                 message,
             } => skipped.push(SkippedAnalysis {
+                category,
+                language: "nushell",
                 recipe: Some(recipe),
                 file,
                 reason: message,
@@ -735,7 +742,7 @@ fn run_rules(files: &[ParsedNu]) -> CheckResult {
         }
     }
 
-    let (errors, skipped) = analysis_errors(diagnostics);
+    let (errors, skipped) = analysis_errors(diagnostics, SkipCategory::ParseError);
     CheckResult {
         errors,
         skipped,
@@ -758,7 +765,7 @@ pub fn check() -> CheckResult {
     });
     files.extend(recipe_files);
     let mut result = run_rules(&files);
-    let (failures, skipped) = analysis_errors(errors);
+    let (failures, skipped) = analysis_errors(errors, SkipCategory::UnsupportedStaticAnalysis);
     result.errors.extend(failures);
     result.skipped.extend(skipped);
     result

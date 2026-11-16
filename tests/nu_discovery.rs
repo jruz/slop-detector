@@ -1,6 +1,20 @@
 #[cfg(test)]
 mod tests {
-    use std::{fs, process, time};
+    use std::{fs, path, process, time};
+
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct LoggedAnalysis {
+        timestamp: String,
+        version: String,
+        revision: String,
+        project: path::PathBuf,
+        language: String,
+        file: path::PathBuf,
+        recipe: Option<String>,
+        category: String,
+        reason: String,
+    }
 
     fn run_fixture(files: &[(&str, &str)]) -> color_eyre::Result<process::Output> {
         let sources: Vec<_> = files
@@ -18,6 +32,48 @@ mod tests {
         files: &[(&str, &[u8])],
         recipe: Option<&str>,
     ) -> color_eyre::Result<process::Output> {
+        let (output, _) = run_fixture_details(files, recipe)?;
+        Ok(output)
+    }
+
+    fn run_logged_fixture(files: &[(&str, &str)]) -> (process::Output, String) {
+        let sources: Vec<_> = files
+            .iter()
+            .map(|(path, source)| (*path, source.as_bytes()))
+            .collect();
+        let (output, log) = run_fixture_details(&sources, None).expect("fixture runs");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(!stdout.contains("Warning:"), "{stdout}");
+        assert!(!stdout.contains("skipped"), "{stdout}");
+        assert!(output.stderr.is_empty(), "{:?}", output.stderr);
+        let log = log.expect("skipped analyses are logged");
+        let entries: Vec<LoggedAnalysis> = log
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("log entry is structured JSON"))
+            .collect();
+        for entry in &entries {
+            assert!(entry.timestamp.ends_with('Z'), "{entry:?}");
+            assert_eq!(entry.version, env!("CARGO_PKG_VERSION"));
+            assert_eq!(entry.revision, env!("REVISION"));
+            assert!(entry.project.is_absolute(), "{entry:?}");
+            assert_eq!(entry.language, "nushell");
+            assert!(entry.file.is_relative(), "{entry:?}");
+            assert!(matches!(
+                entry.category.as_str(),
+                "parse-error" | "unsupported-static-analysis"
+            ));
+            assert!(!entry.reason.is_empty(), "{entry:?}");
+            if let Some(recipe) = &entry.recipe {
+                assert!(!recipe.is_empty(), "{entry:?}");
+            }
+        }
+        (output, log)
+    }
+
+    fn run_fixture_details(
+        files: &[(&str, &[u8])],
+        recipe: Option<&str>,
+    ) -> color_eyre::Result<(process::Output, Option<String>)> {
         let timestamp = time::SystemTime::now().duration_since(time::UNIX_EPOCH)?;
         let root = std::env::temp_dir().join(format!(
             "slop-detector-nu-{}-{}",
@@ -76,17 +132,32 @@ mod tests {
                 }
             }
         }
+        let home = root.join(".git/test-home");
         let output = process::Command::new(env!("CARGO_BIN_EXE_slop-detector"))
             .arg("nu")
+            .env("HOME", &home)
             .current_dir(&root)
             .output()?;
+        let local_log = root.join(".slop-detector-skipped.log");
+        if local_log.try_exists()? {
+            return Err(color_eyre::eyre::eyre!(
+                "project-local log must not be created"
+            ));
+        }
+        let log_path = home.join(".local/state/slop-detector/skipped.jsonl");
+        let log = if log_path.try_exists()? {
+            let contents = fs::read_to_string(log_path)?;
+            Some(contents)
+        } else {
+            None
+        };
         let marker = root.join("SHOULD_NOT_EXIST");
         let executed = marker.try_exists()?;
         fs::remove_dir_all(&root)?;
         if executed {
             return Err(color_eyre::eyre::eyre!("Just expressions must not execute"));
         }
-        Ok(output)
+        Ok((output, log))
     }
 
     #[test]
@@ -296,9 +367,10 @@ mod tests {
                 "fetch:\n    #!/usr/bin/env nu\n    source env.nu\n    ^curl $endpoint\n",
             ),
         ];
-        let output = run_fixture(&files).expect("fixture runs");
+        let (output, log) = run_logged_fixture(&files);
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
-        assert!(stdout.contains("Warning: [nushell] skipped recipe fetch from ./recipes/fetch.just: import could not be resolved statically"), "{stdout}");
+        assert!(log.contains("\"file\":\"recipes/fetch.just\""), "{log}");
+        assert!(log.contains("\"recipe\":\"fetch\""), "{log}");
         assert!(!stdout.contains("no-curl"), "{stdout}");
         assert!(output.status.success(), "{stdout}");
     }
@@ -347,12 +419,12 @@ mod tests {
             "justfile",
             "first := second\nsecond := first\nfetch:\n    #!/usr/bin/env nu\n    ^curl {{first}}\n",
         )];
-        let output = run_fixture(&files).expect("fixture runs");
+        let (output, log) = run_logged_fixture(&files);
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
-        assert!(stdout.contains("cyclic Just variable"), "{stdout}");
+        assert!(log.contains("cyclic Just variable"), "{log}");
         assert!(
-            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
-            "{stdout}"
+            log.contains("\"category\":\"unsupported-static-analysis\""),
+            "{log}"
         );
         assert!(output.status.success(), "{stdout}");
     }
@@ -363,17 +435,13 @@ mod tests {
             "justfile",
             "endpoint := \"https://example.com\\n\"\nfetch:\n    #!/usr/bin/env nu\n    ^curl {{endpoint}}\n",
         )];
-        let output = run_fixture(&files).expect("fixture runs");
+        let (output, log) = run_logged_fixture(&files);
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(
-            stdout.contains("multiline interpolation is not supported"),
-            "{stdout}"
+            log.contains("multiline interpolation is not supported"),
+            "{log}"
         );
-        assert!(stdout.contains("line 4"), "{stdout}");
-        assert!(
-            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
-            "{stdout}"
-        );
+        assert!(log.contains("line 4"), "{log}");
         assert!(output.status.success(), "{stdout}");
     }
 
@@ -383,17 +451,13 @@ mod tests {
             "justfile",
             "value := `touch SHOULD_NOT_EXIST`\nfetch:\n    #!/usr/bin/env nu\n    ^curl {{value}}\n\nstatic:\n    #!/usr/bin/env nu\n    ^curl https://example.com\n",
         )];
-        let output = run_fixture(&files).expect("fixture runs");
+        let (output, log) = run_logged_fixture(&files);
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(
-            stdout.contains("expression requires runtime or unsupported evaluation"),
-            "{stdout}"
+            log.contains("expression requires runtime or unsupported evaluation"),
+            "{log}"
         );
-        assert!(stdout.contains("line 1"), "{stdout}");
-        assert!(
-            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
-            "{stdout}"
-        );
+        assert!(log.contains("line 1"), "{log}");
         assert!(!stdout.contains("Error:"), "{stdout}");
         assert_eq!(stdout.matches("no-curl").count(), 1, "{stdout}");
         assert!(!output.status.success());
@@ -405,17 +469,14 @@ mod tests {
             "justfile",
             "URL := 'https://example.com'\nfetch URL='https://other.example.com':\n    #!/usr/bin/env nu\n    ^curl {{URL}}\n",
         )];
-        let output = run_fixture(&files).expect("fixture runs");
+        let (output, log) = run_logged_fixture(&files);
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(
-            stdout.contains("recipe parameter requires runtime arguments"),
-            "{stdout}"
+            log.contains("recipe parameter requires runtime arguments"),
+            "{log}"
         );
-        assert!(stdout.contains("line 4"), "{stdout}");
-        assert!(
-            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
-            "{stdout}"
-        );
+        assert!(log.contains("line 4"), "{log}");
+        assert!(log.contains("\"recipe\":\"fetch\""), "{log}");
         assert!(output.status.success(), "{stdout}");
     }
 
@@ -425,36 +486,78 @@ mod tests {
             "justfile",
             "fetch:\n    #!/usr/bin/env nu\n    source {{justfile_directory()}}/scripts/missing.nu\n",
         )];
-        let output = run_fixture(&files).expect("fixture runs");
+        let (output, log) = run_logged_fixture(&files);
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
-        assert!(stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile: import could not be resolved statically"), "{stdout}");
+        assert!(log.contains("\"file\":\"justfile\""), "{log}");
+        assert!(log.contains("\"recipe\":\"fetch\""), "{log}");
         assert!(!stdout.contains("Not a constant"), "{stdout}");
         assert!(output.status.success(), "{stdout}");
     }
 
     #[test]
-    fn warns_and_skips_invalid_nushell_files() {
+    fn does_not_create_a_log_without_skipped_analyses() {
+        let files: &[(&str, &[u8])] = &[("valid.nu", b"print 'ready'\n")];
+        let (output, log) = run_fixture_details(files, None).expect("fixture runs");
+        assert!(output.status.success());
+        assert!(log.is_none(), "{log:?}");
+    }
+
+    #[test]
+    fn appends_diagnostics_from_multiple_projects_to_one_home_log() {
+        let timestamp = time::SystemTime::now()
+            .duration_since(time::UNIX_EPOCH)
+            .expect("clock is after Unix epoch");
+        let root = std::env::temp_dir().join(format!(
+            "slop-detector-shared-log-{}-{}",
+            process::id(),
+            timestamp.as_nanos()
+        ));
+        let home = root.join("home");
+        let mut projects = Vec::new();
+        for name in ["first", "second"] {
+            let project = root.join(name);
+            fs::create_dir_all(&project).expect("project directory is created");
+            let source = project.join("broken.nu");
+            fs::write(source, "let =\n").expect("fixture is written");
+            let output = process::Command::new(env!("CARGO_BIN_EXE_slop-detector"))
+                .arg("nu")
+                .env("HOME", &home)
+                .current_dir(&project)
+                .output()
+                .expect("CLI runs");
+            assert!(output.status.success());
+            assert!(output.stderr.is_empty(), "{:?}", output.stderr);
+            assert_eq!(output.stdout, "\u{2713} 0 files checked\n".as_bytes());
+            projects.push(project);
+        }
+        let log_path = home.join(".local/state/slop-detector/skipped.jsonl");
+        let log = fs::read_to_string(log_path).expect("shared log exists");
+        let logged_projects: Vec<_> = log
+            .lines()
+            .map(|line| {
+                let entry: LoggedAnalysis = serde_json::from_str(line).expect("JSON log entry");
+                entry.project
+            })
+            .collect();
+        assert_eq!(logged_projects, projects);
+        fs::remove_dir_all(root).expect("fixture is removed");
+    }
+
+    #[test]
+    fn logs_and_skips_invalid_nushell_files() {
         let files = [
             ("broken.nu", "let =\n"),
             ("scripts/broken", "#!/usr/bin/env nu\nlet =\n"),
             ("valid.nu", "http get https://example.com\n"),
         ];
-        let output = run_fixture(&files).expect("fixture runs");
+        let (output, log) = run_logged_fixture(&files);
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(output.status.success(), "{stdout}");
-        assert!(
-            stdout.contains("Warning: [nushell] skipped file ./broken.nu:"),
-            "{stdout}"
-        );
-        assert!(
-            stdout.contains("Warning: [nushell] skipped file ./scripts/broken:"),
-            "{stdout}"
-        );
-        assert!(!stdout.contains("Error:"), "{stdout}");
-        assert!(
-            stdout.contains("Checked files: 1; skipped analyses: 2"),
-            "{stdout}"
-        );
+        assert!(log.contains("\"file\":\"broken.nu\""), "{log}");
+        assert!(log.contains("\"file\":\"scripts/broken\""), "{log}");
+        assert!(log.contains("\"category\":\"parse-error\""), "{log}");
+        assert_eq!(log.lines().count(), 2, "{log}");
+        assert_eq!(stdout, "\u{2713} 1 files checked\n");
     }
 
     #[test]
@@ -463,13 +566,10 @@ mod tests {
             ("broken.nu", "use missing-module.nu\n"),
             ("fetch.nu", "^curl https://example.com\n"),
         ];
-        let output = run_fixture(&files).expect("fixture runs");
+        let (output, log) = run_logged_fixture(&files);
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(!output.status.success());
-        assert!(
-            stdout.contains("Warning: [nushell] skipped file ./broken.nu:"),
-            "{stdout}"
-        );
+        assert!(log.contains("\"file\":\"broken.nu\""), "{log}");
         assert!(!stdout.contains("Error:"), "{stdout}");
         assert_eq!(stdout.matches("no-curl").count(), 1, "{stdout}");
     }
@@ -490,18 +590,13 @@ mod tests {
     #[test]
     fn reports_invalid_nushell_in_recipes() {
         let files = [("justfile", "fetch:\n    #!/usr/bin/env nu\n    let =\n")];
-        let output = run_fixture(&files).expect("fixture runs");
+        let (output, log) = run_logged_fixture(&files);
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(output.status.success(), "{stdout}");
-        assert!(!stdout.contains("Error:"), "{stdout}");
-        assert!(
-            stdout.contains("Warning: [nushell] skipped recipe fetch from ./justfile:"),
-            "{stdout}"
-        );
-        assert!(stdout.contains("line 3:"), "{stdout}");
-        assert!(
-            stdout.contains("Checked files: 0; skipped analyses: 1"),
-            "{stdout}"
-        );
+        assert!(log.contains("\"file\":\"justfile\""), "{log}");
+        assert!(log.contains("\"recipe\":\"fetch\""), "{log}");
+        assert!(log.contains("\"category\":\"parse-error\""), "{log}");
+        assert!(log.contains("line 3:"), "{log}");
+        assert_eq!(stdout, "\u{2713} 0 files checked\n");
     }
 }

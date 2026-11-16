@@ -10,8 +10,17 @@ pub struct Violation {
     pub rule: String,
 }
 
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SkipCategory {
+    ParseError,
+    UnsupportedStaticAnalysis,
+}
+
 #[derive(Debug, Clone)]
 pub struct SkippedAnalysis {
+    pub category: SkipCategory,
+    pub language: &'static str,
     pub recipe: Option<String>,
     pub file: String,
     pub reason: String,

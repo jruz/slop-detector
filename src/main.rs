@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod diagnostics;
 mod files;
 mod langs;
 mod output;
