@@ -13,7 +13,7 @@ clap = { version = "=4.6.7", features = ["derive"] }
 color-eyre = "=0.6.5"
 hcl = { version = "=0.20.0", package = "hcl-rs" }
 ignore = "=0.4.34"
-lightningcss = "=1.0.0-alpha.70"
+lightningcss = "=1.0.0-alpha.72"
 miette = "=7.6.0"
 nu-cmd-extra = { version = "0.112.2", default-features = false }
 nu-cmd-lang = { version = "0.112.2", default-features = false, features = [
