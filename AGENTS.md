@@ -61,6 +61,16 @@ Rules:
 - `just rust-outdated` - Check for outdated dependencies
 - `just rust-upgrade` - Upgrade dependencies
 
+## Error Log
+
+- Inspect the log with `just logs show`.
+- Remove the log with `just logs clean`.
+- Keep operational errors visible on the CLI.
+- Keep lint findings and expected skips out of the log.
+- Log only selected error metadata.
+- Exclude source contents and secrets.
+- Warn on log write failures without changing exit status.
+
 ## Adding Rules
 
 ### 1. Create Fixtures

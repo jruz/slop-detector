@@ -12,6 +12,9 @@ fix:
     just just::fmt-fix
     just rust::fix
 
+logs ACTION:
+    nu scripts/logs.nu {{ quote(ACTION) }}
+
 setup:
     just git::hooks-setup
 

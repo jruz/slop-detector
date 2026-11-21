@@ -12,8 +12,6 @@ pub enum Error {
     #[error(transparent)]
     Config(#[from] color_eyre::Report),
     #[error(transparent)]
-    Diagnostics(#[from] diagnostics::Error),
-    #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Format(#[from] std::fmt::Error),
@@ -92,6 +90,54 @@ fn run_check(cmd: SingleCommand) -> types::CheckResult {
     }
 }
 
+pub fn failure_event(error: &Error) -> diagnostics::Event<'static> {
+    let (operation, path, cause) = match error {
+        Error::Config(report) => {
+            let cause = if let Some(io) = report.downcast_ref::<std::io::Error>() {
+                let kind = io.kind();
+                format!("{kind}")
+            } else {
+                "invalid TOML configuration".to_owned()
+            };
+            ("load-config", Some(config::CONFIG_FILE), cause)
+        }
+        Error::Io(io) => {
+            let kind = io.kind();
+            ("write-config", Some(config::CONFIG_FILE), format!("{kind}"))
+        }
+        Error::Format(_) => ("format-output", None, "output formatting failed".to_owned()),
+    };
+    let path = path.map(str::to_owned);
+    diagnostics::Event::OperationFailure {
+        operation,
+        path,
+        cause,
+    }
+}
+
+fn check_failure(error: &types::AppError) -> diagnostics::Event<'static> {
+    let (operation, path, cause) = match error {
+        types::AppError::Glob { .. } => ("discover-files", ".", "file discovery failed".to_owned()),
+        types::AppError::Read { file, kind, .. } => ("read-file", file.as_str(), format!("{kind}")),
+        types::AppError::Parse { file, .. } => (
+            "parse-file",
+            file.as_str(),
+            "parser rejected input".to_owned(),
+        ),
+        types::AppError::Recipe { file, .. } => (
+            "analyze-recipe",
+            file.as_str(),
+            "recipe analysis failed".to_owned(),
+        ),
+    };
+    let path = path.trim_start_matches("./").to_owned();
+    diagnostics::Event::OperationFailure {
+        operation,
+        path: Some(path),
+        cause,
+    }
+}
+
 pub fn run(command: Command, create_config: bool) -> Result<Output, Error> {
     let existing_config = config::load_config()?;
 
@@ -123,10 +169,12 @@ pub fn run(command: Command, create_config: bool) -> Result<Output, Error> {
     let mut has_errors = false;
     let mut all_violations: Vec<types::Violation> = Vec::new();
     let mut text = String::new();
+    let mut analysis_failures = Vec::new();
+    let mut events = Vec::new();
 
     for cmd in commands_to_run {
         let result = run_check(*cmd);
-        diagnostics::append(&result.skipped)?;
+        analysis_failures.extend(result.skipped);
 
         let filtered = config::filter_violations(result.violations, &config);
         total_files += result.file_count;
@@ -135,9 +183,19 @@ pub fn run(command: Command, create_config: bool) -> Result<Output, Error> {
         if !result.errors.is_empty() {
             has_errors = true;
             for error in result.errors {
+                let event = check_failure(&error);
+                events.push(event);
                 writeln!(text, "Error: {error}")?;
             }
         }
+    }
+
+    let analysis_events = analysis_failures
+        .iter()
+        .map(diagnostics::Event::AnalysisFailure);
+    events.extend(analysis_events);
+    if let Err(error) = diagnostics::append(&events) {
+        writeln!(text, "Warning: could not write error log: {error}")?;
     }
 
     if create_config {
@@ -147,7 +205,7 @@ pub fn run(command: Command, create_config: bool) -> Result<Output, Error> {
         } else {
             "Created"
         };
-        fs::write("slop-detector.toml", toml_content)?;
+        fs::write(config::CONFIG_FILE, toml_content)?;
         writeln!(
             text,
             "{action} slop-detector.toml with {} violations excluded",

@@ -993,10 +993,10 @@ fn parse_gleam_tomls(paths: Vec<String>) -> (Vec<ParsedGleamToml>, Vec<AppError>
                     message: err.to_string(),
                 }),
             },
-            Err(err) => errors.push(AppError::Read {
-                file: path,
-                message: err.to_string(),
-            }),
+            Err(err) => {
+                let error = crate::types::read_error(path, &err);
+                errors.push(error);
+            }
         }
     }
 
@@ -1036,10 +1036,10 @@ fn parse_gleam(paths: Vec<String>, parser: &mut Parser) -> (Vec<ParsedGleam>, Ve
                     message: "failed to parse".to_string(),
                 }),
             },
-            Err(err) => errors.push(AppError::Read {
-                file: path,
-                message: err.to_string(),
-            }),
+            Err(err) => {
+                let error = crate::types::read_error(path, &err);
+                errors.push(error);
+            }
         }
     }
 

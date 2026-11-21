@@ -203,10 +203,10 @@ fn check_files(paths: Vec<String>) -> (Vec<Violation>, Vec<AppError>, usize) {
                 let violations = collect_violations(&visitor);
                 all_violations.extend(violations);
             }
-            Err(err) => errors.push(AppError::Read {
-                file: path,
-                message: err.to_string(),
-            }),
+            Err(err) => {
+                let error = crate::types::read_error(path, &err);
+                errors.push(error);
+            }
         }
     }
 

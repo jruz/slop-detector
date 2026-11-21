@@ -87,10 +87,7 @@ fn run_rules(path: &str, settings: &Settings) -> Vec<Violation> {
 
 fn app_error(file: String, error: Error) -> AppError {
     match error {
-        Error::Read(error) => AppError::Read {
-            file,
-            message: error.to_string(),
-        },
+        Error::Read(error) => crate::types::read_error(file, &error),
         Error::Parse(error) => AppError::Parse {
             file,
             message: error.to_string(),

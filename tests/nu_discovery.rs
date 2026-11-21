@@ -6,6 +6,9 @@ mod tests {
     #[serde(deny_unknown_fields)]
     struct LoggedAnalysis {
         timestamp: String,
+        application: String,
+        level: String,
+        event: String,
         version: String,
         revision: String,
         project: path::PathBuf,
@@ -53,10 +56,13 @@ mod tests {
             .collect();
         for entry in &entries {
             assert!(entry.timestamp.ends_with('Z'), "{entry:?}");
+            assert_eq!(entry.application, "slop-detector");
+            assert_eq!(entry.level, "ERROR");
+            assert_eq!(entry.event, "analysis-failure");
             assert_eq!(entry.version, env!("CARGO_PKG_VERSION"));
             assert_eq!(entry.revision, env!("REVISION"));
             assert!(entry.project.is_absolute(), "{entry:?}");
-            assert_eq!(entry.language, "nushell");
+            assert!(matches!(entry.language.as_str(), "nushell" | "just"));
             assert!(entry.file.is_relative(), "{entry:?}");
             assert!(matches!(
                 entry.category.as_str(),
@@ -136,6 +142,7 @@ mod tests {
         let output = process::Command::new(env!("CARGO_BIN_EXE_slop-detector"))
             .arg("nu")
             .env("HOME", &home)
+            .env_remove("XDG_STATE_HOME")
             .current_dir(&root)
             .output()?;
         let local_log = root.join(".slop-detector-skipped.log");
@@ -144,7 +151,7 @@ mod tests {
                 "project-local log must not be created"
             ));
         }
-        let log_path = home.join(".local/state/slop-detector/skipped.jsonl");
+        let log_path = home.join(".local/state/slop-detector/errors.jsonl");
         let log = if log_path.try_exists()? {
             let contents = fs::read_to_string(log_path)?;
             Some(contents)
@@ -495,11 +502,15 @@ mod tests {
     }
 
     #[test]
-    fn does_not_create_a_log_without_skipped_analyses() {
-        let files: &[(&str, &[u8])] = &[("valid.nu", b"print 'ready'\n")];
-        let (output, log) = run_fixture_details(files, None).expect("fixture runs");
-        assert!(output.status.success());
-        assert!(log.is_none(), "{log:?}");
+    fn does_not_log_clean_files_or_lint_findings() {
+        let clean: &[u8] = b"print 'ready'\n";
+        let violation: &[u8] = b"^curl https://example.com\n";
+        for (source, success) in [(clean, true), (violation, false)] {
+            let files = [("fixture.nu", source)];
+            let (output, log) = run_fixture_details(&files, None).expect("fixture runs");
+            assert_eq!(output.status.success(), success);
+            assert!(log.is_none(), "{log:?}");
+        }
     }
 
     #[test]
@@ -513,6 +524,7 @@ mod tests {
             timestamp.as_nanos()
         ));
         let home = root.join("home");
+        let state = root.join("state");
         let mut projects = Vec::new();
         for name in ["first", "second"] {
             let project = root.join(name);
@@ -522,6 +534,7 @@ mod tests {
             let output = process::Command::new(env!("CARGO_BIN_EXE_slop-detector"))
                 .arg("nu")
                 .env("HOME", &home)
+                .env("XDG_STATE_HOME", &state)
                 .current_dir(&project)
                 .output()
                 .expect("CLI runs");
@@ -530,7 +543,8 @@ mod tests {
             assert_eq!(output.stdout, "\u{2713} 0 files checked\n".as_bytes());
             projects.push(project);
         }
-        let log_path = home.join(".local/state/slop-detector/skipped.jsonl");
+        assert!(!home.exists());
+        let log_path = state.join("slop-detector/errors.jsonl");
         let log = fs::read_to_string(log_path).expect("shared log exists");
         let logged_projects: Vec<_> = log
             .lines()
@@ -540,6 +554,44 @@ mod tests {
             })
             .collect();
         assert_eq!(logged_projects, projects);
+        fs::remove_dir_all(root).expect("fixture is removed");
+    }
+
+    #[test]
+    fn logging_failure_preserves_cli_status() {
+        let timestamp = time::SystemTime::now()
+            .duration_since(time::UNIX_EPOCH)
+            .expect("clock is after Unix epoch");
+        let root = std::env::temp_dir().join(format!(
+            "slop-detector-unwritable-log-{}-{}",
+            process::id(),
+            timestamp.as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("fixture directory exists");
+        let state = root.join("blocked-state");
+        fs::write(&state, "not a directory").expect("state path is blocked");
+        let broken = root.join("broken.nu");
+        fs::write(broken, "let =\n").expect("fixture exists");
+        for (source, success) in [
+            ("print 'ready'\n", true),
+            ("^curl https://example.com\n", false),
+        ] {
+            let fixture = root.join("fixture.nu");
+            fs::write(fixture, source).expect("fixture exists");
+            let output = process::Command::new(env!("CARGO_BIN_EXE_slop-detector"))
+                .arg("nu")
+                .env("XDG_STATE_HOME", &state)
+                .current_dir(&root)
+                .output()
+                .expect("CLI runs");
+            let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+            assert_eq!(output.status.success(), success, "{stdout}");
+            assert!(
+                stdout.contains("Warning: could not write error log"),
+                "{stdout}"
+            );
+            assert_eq!(stdout.contains("no-curl"), !success, "{stdout}");
+        }
         fs::remove_dir_all(root).expect("fixture is removed");
     }
 
@@ -577,7 +629,12 @@ mod tests {
     #[test]
     fn read_failures_remain_errors() {
         let files: &[(&str, &[u8])] = &[("broken.nu", b"\xff")];
-        let output = run_fixture_bytes(files).expect("fixture runs");
+        let (output, log) = run_fixture_details(files, None).expect("fixture runs");
+        let log = log.expect("read failure is logged");
+        assert!(log.contains("\"event\":\"operation-failure\""), "{log}");
+        assert!(log.contains("\"operation\":\"read-file\""), "{log}");
+        assert!(log.contains("\"path\":\"broken.nu\""), "{log}");
+        assert!(log.contains("\"cause\":\"invalid data\""), "{log}");
         let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
         assert!(!output.status.success());
         assert!(
@@ -585,6 +642,44 @@ mod tests {
             "{stdout}"
         );
         assert!(!stdout.contains("Warning:"), "{stdout}");
+    }
+
+    #[test]
+    fn shares_app_log_between_just_and_nushell() {
+        let files = [
+            (
+                "justfile",
+                "valid:\n    #!/usr/bin/env nu\n    print 'ready'\n\nbroken :=\n",
+            ),
+            ("broken.nu", "let =\n"),
+        ];
+        let (output, log) = run_logged_fixture(&files);
+        assert!(output.status.success());
+        let entries: Vec<LoggedAnalysis> = log
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("JSON log entry"))
+            .collect();
+        assert_eq!(entries.len(), 2, "{log}");
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.file == path::Path::new("justfile")
+                    && entry.language == "just"
+                    && entry.category == "parse-error"),
+            "{log}"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.file == path::Path::new("broken.nu")
+                    && entry.language == "nushell"
+                    && entry.category == "parse-error"),
+            "{log}"
+        );
+        assert!(log.contains("line 5, column"), "{log}");
+        assert!(!log.contains("invalid Just syntax"), "{log}");
+        assert!(!log.contains("broken :="), "{log}");
+        assert_eq!(output.stdout, "\u{2713} 0 files checked\n".as_bytes());
     }
 
     #[test]
@@ -596,7 +691,9 @@ mod tests {
         assert!(log.contains("\"file\":\"justfile\""), "{log}");
         assert!(log.contains("\"recipe\":\"fetch\""), "{log}");
         assert!(log.contains("\"category\":\"parse-error\""), "{log}");
-        assert!(log.contains("line 3:"), "{log}");
+        assert!(log.contains("line 3, column "), "{log}");
+        assert!(log.contains("nu::parser::"), "{log}");
+        assert!(!log.contains("let ="), "{log}");
         assert_eq!(stdout, "\u{2713} 0 files checked\n");
     }
 }

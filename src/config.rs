@@ -5,7 +5,7 @@ use color_eyre::Result;
 
 use crate::types::{Config, Violation};
 
-const CONFIG_FILE: &str = "slop-detector.toml";
+pub const CONFIG_FILE: &str = "slop-detector.toml";
 
 pub fn load_config() -> Result<Config> {
     let path = Path::new(CONFIG_FILE);

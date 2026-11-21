@@ -108,10 +108,10 @@ fn parse_package_jsons(paths: Vec<String>) -> (Vec<ParsedPackageJson>, Vec<AppEr
                     message: err.to_string(),
                 }),
             },
-            Err(err) => errors.push(AppError::Read {
-                file: path,
-                message: err.to_string(),
-            }),
+            Err(err) => {
+                let error = crate::types::read_error(path, &err);
+                errors.push(error);
+            }
         }
     }
 
@@ -582,10 +582,10 @@ fn check_ts_files(paths: Vec<String>) -> (usize, Vec<Violation>, Vec<AppError>) 
                 let violations = collect_violations(visitor);
                 all_violations.extend(violations);
             }
-            Err(err) => errors.push(AppError::Read {
-                file: path,
-                message: err.to_string(),
-            }),
+            Err(err) => {
+                let error = crate::types::read_error(path, &err);
+                errors.push(error);
+            }
         }
     }
 

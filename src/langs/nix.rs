@@ -192,10 +192,10 @@ fn parse(paths: Vec<String>) -> (Vec<ParsedNixFile>, Vec<AppError>) {
                     });
                 }
             }
-            Err(err) => errors.push(AppError::Read {
-                file: path,
-                message: err.to_string(),
-            }),
+            Err(err) => {
+                let error = crate::types::read_error(path, &err);
+                errors.push(error);
+            }
         }
     }
 

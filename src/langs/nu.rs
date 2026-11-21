@@ -17,7 +17,7 @@ use nu_std::load_standard_library;
 
 use crate::files::{find_files, has_shebang};
 use crate::langs::just;
-use crate::types::{AppError, CheckResult, SkipCategory, SkippedAnalysis, Violation};
+use crate::types::{self, AnalysisCategory, AppError, CheckResult, Violation};
 
 const EXCLUDES: &[&str] = &["target", "node_modules"];
 const PATTERNS: &[&str] = &["*"];
@@ -493,9 +493,9 @@ fn check_no_external_in_each(analysis: &Analysis<'_>) -> Vec<String> {
 }
 
 fn engine_state_for(path: &str, working_directory: Option<&Path>) -> Result<EngineState, AppError> {
-    let absolute = std::path::absolute(path).map_err(|err| AppError::Read {
-        file: path.to_string(),
-        message: err.to_string(),
+    let absolute = std::path::absolute(path).map_err(|err| {
+        let file = path.to_string();
+        types::read_error(file, &err)
     })?;
     let directory = absolute
         .parent()
@@ -503,6 +503,7 @@ fn engine_state_for(path: &str, working_directory: Option<&Path>) -> Result<Engi
         .ok_or_else(|| AppError::Read {
             file: path.to_string(),
             message: "file has no parent directory".to_string(),
+            kind: std::io::ErrorKind::InvalidInput,
         })?;
     let language_commands = create_default_context();
     let shell_commands = add_shell_command_context(language_commands);
@@ -552,7 +553,16 @@ fn with_analysis_in<T>(
             .map(|err| {
                 let span = err.span();
                 let line = line_in(source, base, span);
-                format!("line {line}: {err}")
+                let offset = span.start.saturating_sub(base);
+                let column = source.get(..offset).map_or(1, |head| {
+                    let last_line = head.rsplit('\n').next().map_or(head, |text| text);
+                    last_line.chars().count() + 1
+                });
+                let code = miette::Diagnostic::code(err);
+                match code {
+                    Some(code) => format!("line {line}, column {column}: {code}"),
+                    None => format!("line {line}, column {column}: Nushell parser rejected input"),
+                }
             })
             .collect::<Vec<_>>()
             .join("; ");
@@ -602,10 +612,8 @@ fn read(paths: Vec<String>) -> (Vec<ParsedNu>, Vec<AppError>) {
             match has_shebang(&path, "nu") {
                 Ok(found) => found,
                 Err(err) => {
-                    errors.push(AppError::Read {
-                        file: path,
-                        message: err.to_string(),
-                    });
+                    let error = types::read_error(path, &err);
+                    errors.push(error);
                     continue;
                 }
             }
@@ -620,10 +628,10 @@ fn read(paths: Vec<String>) -> (Vec<ParsedNu>, Vec<AppError>) {
                 recipe: None,
                 directory: None,
             }),
-            Err(err) => errors.push(AppError::Read {
-                file: path,
-                message: err.to_string(),
-            }),
+            Err(err) => {
+                let error = crate::types::read_error(path, &err);
+                errors.push(error);
+            }
         }
     }
 
@@ -655,38 +663,6 @@ fn violations_of(path: &str, analysis: &Analysis<'_>) -> Vec<Violation> {
             })
         })
         .collect()
-}
-
-fn analysis_errors(
-    diagnostics: Vec<AppError>,
-    category: SkipCategory,
-) -> (Vec<AppError>, Vec<SkippedAnalysis>) {
-    let mut errors = Vec::new();
-    let mut skipped = Vec::new();
-    for diagnostic in diagnostics {
-        match diagnostic {
-            AppError::Parse { file, message } => skipped.push(SkippedAnalysis {
-                category,
-                language: "nushell",
-                recipe: None,
-                file,
-                reason: message,
-            }),
-            AppError::Recipe {
-                file,
-                recipe,
-                message,
-            } => skipped.push(SkippedAnalysis {
-                category,
-                language: "nushell",
-                recipe: Some(recipe),
-                file,
-                reason: message,
-            }),
-            error => errors.push(error),
-        }
-    }
-    (errors, skipped)
 }
 
 fn source_error(file: &ParsedNu, error: AppError) -> AppError {
@@ -742,7 +718,8 @@ fn run_rules(files: &[ParsedNu]) -> CheckResult {
         }
     }
 
-    let (errors, skipped) = analysis_errors(diagnostics, SkipCategory::ParseError);
+    let (errors, skipped) =
+        types::partition_analysis_errors(diagnostics, "nushell", AnalysisCategory::ParseError);
     CheckResult {
         errors,
         skipped,
@@ -756,7 +733,12 @@ pub fn check() -> CheckResult {
     let (mut files, read_errors) = read(paths);
     errors.extend(read_errors);
     let (recipes, recipe_errors) = just::nushell_sources();
-    errors.extend(recipe_errors);
+    let (just_errors, just_failures) = types::partition_analysis_errors(
+        recipe_errors,
+        "just",
+        AnalysisCategory::UnsupportedStaticAnalysis,
+    );
+    errors.extend(just_errors);
     let recipe_files = recipes.into_iter().map(|recipe| ParsedNu {
         path: recipe.path,
         recipe: Some(recipe.name),
@@ -765,9 +747,8 @@ pub fn check() -> CheckResult {
     });
     files.extend(recipe_files);
     let mut result = run_rules(&files);
-    let (failures, skipped) = analysis_errors(errors, SkipCategory::UnsupportedStaticAnalysis);
-    result.errors.extend(failures);
-    result.skipped.extend(skipped);
+    result.errors.extend(errors);
+    result.skipped.extend(just_failures);
     result
 }
 

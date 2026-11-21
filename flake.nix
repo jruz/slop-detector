@@ -89,6 +89,7 @@
           packages = with pkgs; [
             gh
             git
+            jq
             just
             nushell
             podman

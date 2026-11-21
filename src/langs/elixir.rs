@@ -217,10 +217,10 @@ fn parse(paths: Vec<String>) -> (Vec<ParsedElixir>, Vec<AppError>) {
     for path in paths {
         match fs::read_to_string(&path) {
             Ok(source) => parsed.push(ParsedElixir { path, source }),
-            Err(err) => errors.push(AppError::Read {
-                file: path,
-                message: err.to_string(),
-            }),
+            Err(err) => {
+                let error = crate::types::read_error(path, &err);
+                errors.push(error);
+            }
         }
     }
 

@@ -516,10 +516,10 @@ fn parse(paths: Vec<String>, parser: &mut Parser) -> (Vec<ParsedJust>, Vec<AppEr
                     message: "failed to parse".to_string(),
                 }),
             },
-            Err(err) => errors.push(AppError::Read {
-                file: path,
-                message: err.to_string(),
-            }),
+            Err(err) => {
+                let error = crate::types::read_error(path, &err);
+                errors.push(error);
+            }
         }
     }
 
@@ -549,8 +549,8 @@ fn run_rules(files: &[ParsedJust], rules: &[Rule]) -> Vec<Violation> {
 fn render_error(path: &str, error: &just_render::Error) -> AppError {
     let file = path.to_string();
     let message = error.to_string();
-    if matches!(error, just_render::Error::Io(_)) {
-        return AppError::Read { file, message };
+    if let just_render::Error::Io(source) = error {
+        return crate::types::read_error(file, source);
     }
     AppError::Parse { file, message }
 }
@@ -570,15 +570,14 @@ fn nushell_recipe_sources(
         .into_iter()
         .filter(|recipe| is_nu_recipe(*recipe, source_bytes))
     {
-        let name = match recipe_name(recipe, source_bytes) {
-            Ok(Some(name)) => name.to_string(),
-            result => {
-                errors.push(AppError::Parse {
-                    file: document.path.to_string(),
-                    message: format!("could not identify recipe: {result:?}"),
-                });
-                continue;
-            }
+        let name = if let Ok(Some(found_name)) = recipe_name(recipe, source_bytes) {
+            found_name.to_string()
+        } else {
+            errors.push(AppError::Parse {
+                file: document.path.to_string(),
+                message: "could not identify recipe".to_string(),
+            });
+            continue;
         };
         match just_render::render(document, recipe, graph, documents) {
             Ok(rendered) => {
@@ -606,6 +605,28 @@ pub struct NushellRecipe {
     pub name: String,
     pub source: String,
     pub directory: std::path::PathBuf,
+}
+
+fn syntax_errors(node: Node<'_>) -> Vec<String> {
+    if node.is_error() || node.is_missing() {
+        let start = node.start_position();
+        let end = node.end_position();
+        let kind = node.kind();
+        let issue = if node.is_missing() {
+            "missing"
+        } else {
+            "unexpected"
+        };
+        return vec![format!(
+            "line {}, column {} to line {}, column {}: {issue} {kind}",
+            start.row + 1,
+            start.column + 1,
+            end.row + 1,
+            end.column + 1
+        )];
+    }
+    let mut cursor = node.walk();
+    node.children(&mut cursor).flat_map(syntax_errors).collect()
 }
 
 pub fn nushell_sources() -> (Vec<NushellRecipe>, Vec<AppError>) {
@@ -640,10 +661,11 @@ pub fn nushell_sources() -> (Vec<NushellRecipe>, Vec<AppError>) {
     };
     let mut sources = Vec::new();
     for file in &documents {
-        if file.tree.root_node().has_error() {
+        let root = file.tree.root_node();
+        if root.has_error() {
             errors.push(AppError::Parse {
                 file: file.path.to_string(),
-                message: "invalid Just syntax".to_string(),
+                message: syntax_errors(root).join("; "),
             });
             continue;
         }
