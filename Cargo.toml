@@ -9,7 +9,7 @@ name = "slop-detector"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "=4.6.7", features = ["derive"] }
+clap = { version = "=4.6.8", features = ["derive"] }
 color-eyre = "=0.6.5"
 hcl = { version = "=0.20.0", package = "hcl-rs" }
 ignore = "=0.4.34"
