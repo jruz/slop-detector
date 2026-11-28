@@ -6,8 +6,6 @@
 /PLAN.md
 result
 .intentionally-empty-file.o
-/*-unknown-linux-musl-*
-/*-apple-darwin-*
 
 # project entries below, everything above is managed by template-sync
 PLAN.md

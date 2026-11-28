@@ -36,6 +36,7 @@ def help-text []: nothing -> string {
         ""
         "Usage:"
         "  sandbox <command> [...args]  run a command in its runtime container"
+        "  sandbox <docker options> -- <command> [...args]  pass explicit Docker run options"
         "  sandbox build [--force]      build missing images for existing Dockerfiles, --force rebuilds all"
         "  sandbox --help               show this help"
         ""
@@ -149,19 +150,31 @@ def runtime-image [root: path, runtime: string]: nothing -> string {
     }
 }
 
+def data-home []: nothing -> path {
+    $env.XDG_DATA_HOME? | default ($env.HOME | path join .local share)
+}
+
+def cache-home []: nothing -> path {
+    $env.XDG_CACHE_HOME? | default ($env.HOME | path join .cache)
+}
+
+def cargo-home []: nothing -> path {
+    $env.CARGO_HOME? | default ($env.HOME | path join .cargo)
+}
+
 def pnpm-store []: nothing -> path {
-    $env.HOME | path join .local share pnpm
+    data-home | path join pnpm
 }
 
 def pnpm-cache []: nothing -> path {
-    $env.HOME | path join .cache pnpm
+    cache-home | path join pnpm
 }
 
 def cache-dirs [runtime: string]: nothing -> list<path> {
     match $runtime {
         bun => []
         node => [(pnpm-store) (pnpm-cache)]
-        rust => [($env.HOME | path join .cargo registry) ($env.HOME | path join .cargo git)]
+        rust => [(cargo-home | path join registry) (cargo-home | path join git)]
     }
 }
 
@@ -173,7 +186,7 @@ def runtime-env [runtime: string]: nothing -> list<string> {
             --env $"pnpm_config_cache_dir=(pnpm-cache)"
         ]
         rust => [
-            --env $"CARGO_HOME=($env.HOME)/.cargo"
+            --env $"CARGO_HOME=(cargo-home)"
             --env CARGO_TARGET_DIR=/app/target/docker
         ]
     }
@@ -260,12 +273,12 @@ def tty-flags []: nothing -> list<string> {
     if (is-terminal --stdin) and (is-terminal --stdout) { [--tty] } else { [] }
 }
 
-def run-sandbox [command: string, args: list<string>]: record -> nothing {
+def run-sandbox [request: record]: record -> nothing {
     let project = $in
     let root = $project.root
     let config = $project.config
     let relative = ($env.PWD | path relative-to $root)
-    let runtime = (runtime-of $command)
+    let runtime = (runtime-of $request.command)
     let image = (runtime-image $root $runtime)
     let caches = (cache-dirs $runtime | create-dirs)
     let uid = (^id --user | str trim)
@@ -288,9 +301,10 @@ def run-sandbox [command: string, args: list<string>]: record -> nothing {
         ...($caches | bind-mounts)
         ...(runtime-env $runtime)
         ...($config | configured-mounts $root)
+        ...$request.docker_options
         $image
-        $command
-        ...$args)
+        $request.command
+        ...$request.args)
 }
 
 # Build missing runtime images
@@ -316,11 +330,31 @@ def "main build" [
     }
 }
 
+def invocation [arguments: list<string>]: nothing -> record {
+    let command = ($arguments | first)
+    let boundaries = ($arguments | enumerate | where item == '--')
+    if (is-known $command) or ($boundaries | is-empty) {
+        return {
+            command: $command
+            args: ($arguments | skip 1)
+            docker_options: []
+        }
+    }
+    let boundary = ($boundaries | first | get index)
+    let runtime = ($arguments | skip ($boundary + 1))
+    {
+        command: ($runtime | first)
+        args: ($runtime | skip 1)
+        docker_options: ($arguments | take $boundary)
+    }
+}
+
 # Run a command inside its runtime container
 def --wrapped main [
-    command: string # command to run, such as cargo or pnpm
-    ...args: string # arguments forwarded to the command
+    ...arguments: string # Docker options before --, followed by the runtime command and its arguments
 ]: nothing -> nothing {
+    let request = (invocation $arguments)
+    let command = $request.command
     match $command {
         "--help" | "-h" => { print (help-text) }
         _ if (is-known $command) => {
@@ -333,7 +367,7 @@ def --wrapped main [
                 }
                 exit 1
             }
-            {root: $root, config: $config} | run-sandbox $command $args
+            {root: $root, config: $config} | run-sandbox $request
         }
         _ => {
             log error (unknown-command-text $command)

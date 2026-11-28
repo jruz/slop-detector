@@ -40,7 +40,7 @@
               pkgs.coreutils
             ]
           }:"$PATH"
-          exec ${pkgs.nushell}/bin/nu --no-config-file ${./scripts/sandbox.nu} "$@"
+          exec ${pkgs.nushell}/bin/nu ${./scripts/sandbox.nu} "$@"
         '';
       in
       {
@@ -87,11 +87,12 @@
 
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
+            fd
             gh
             git
-            jq
             just
             nushell
+            oxfmt
             podman
             ripgrep
             sandbox
